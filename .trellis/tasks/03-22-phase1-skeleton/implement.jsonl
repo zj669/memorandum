@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Layer structure and naming conventions"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "UI directory layout"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Compose component patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "ViewModel and StateFlow patterns"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality standards"}
+{"file": "docs/plans/01-project-skeleton.md", "reason": "Detailed implementation plan"}
