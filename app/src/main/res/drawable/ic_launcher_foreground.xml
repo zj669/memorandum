@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Notebook body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,28 L78,28 C80.2,28 82,29.8 82,32 L82,80 C82,82.2 80.2,84 78,84 L30,84 C27.8,84 26,82.2 26,80 L26,32 C26,29.8 27.8,28 30,28 Z" />
+    <!-- Notebook spine -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M26,28 L34,28 L34,84 L26,84 Z" />
+    <!-- Spine rings -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#6650A4"
+        android:strokeWidth="1.5"
+        android:pathData="M22,38 L34,38 M22,48 L34,48 M22,58 L34,58 M22,68 L34,68 M22,78 L34,78" />
+    <!-- Text lines -->
+    <path
+        android:fillColor="#6650A4"
+        android:pathData="M40,40 L74,40 C74.6,40 75,40.4 75,41 L75,42 C75,42.6 74.6,43 74,43 L40,43 C39.4,43 39,42.6 39,42 L39,41 C39,40.4 39.4,40 40,40 Z" />
+    <path
+        android:fillColor="#9A82DB"
+        android:pathData="M40,49 L68,49 C68.6,49 69,49.4 69,50 L69,51 C69,51.6 68.6,52 68,52 L40,52 C39.4,52 39,51.6 39,51 L39,50 C39,49.4 39.4,49 40,49 Z" />
+    <path
+        android:fillColor="#9A82DB"
+        android:pathData="M40,58 L72,58 C72.6,58 73,58.4 73,59 L73,60 C73,60.6 72.6,61 72,61 L40,61 C39.4,61 39,60.6 39,60 L39,59 C39,58.4 39.4,58 40,58 Z" />
+    <!-- AI sparkle -->
+    <path
+        android:fillColor="#6650A4"
+        android:pathData="M68,70 L70,66 L72,70 L76,72 L72,74 L70,78 L68,74 L64,72 Z" />
+    <path
+        android:fillColor="#9A82DB"
+        android:pathData="M58,68 L59,66 L60,68 L62,69 L60,70 L59,72 L58,70 L56,69 Z" />
+</vector>

@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "docs/plans/03-ui-layer.md", "reason": "Detailed UI design"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Compose patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety"}

@@ -7,6 +7,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.memorandum"
     compileSdk = 35
@@ -68,6 +72,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // Room
     implementation(libs.room.runtime)

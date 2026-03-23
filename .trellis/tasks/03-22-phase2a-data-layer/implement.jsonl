@@ -1,0 +1,8 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "docs/plans/02-data-layer.md", "reason": "Detailed data layer design"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Room conventions"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Directory layout"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety conventions"}

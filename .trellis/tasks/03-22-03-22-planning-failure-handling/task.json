@@ -1,0 +1,44 @@
+{
+  "id": "03-22-planning-failure-handling",
+  "name": "03-22-planning-failure-handling",
+  "title": "规划失败处理 - 失败状态+重试/删除按钮",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "priority": "P2",
+  "creator": "zj669",
+  "assignee": "zj669",
+  "createdAt": "2026-03-22",
+  "completedAt": null,
+  "branch": "feature/planning-failure-handling",
+  "base_branch": "master",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

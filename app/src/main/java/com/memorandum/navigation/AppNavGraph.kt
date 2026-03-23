@@ -14,6 +14,8 @@ import androidx.navigation.navArgument
 import com.memorandum.ui.entry.EntryScreen
 import com.memorandum.ui.memory.MemoryScreen
 import com.memorandum.ui.notifications.NotificationsScreen
+import com.memorandum.ui.settings.McpConfigScreen
+import com.memorandum.ui.settings.ModelConfigScreen
 import com.memorandum.ui.settings.SettingsScreen
 import com.memorandum.ui.taskdetail.TaskDetailScreen
 import com.memorandum.ui.tasks.TasksScreen
@@ -79,11 +81,11 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
                     onNavigateToNotifications = {
                         navController.navigate(Route.Notifications.route)
                     },
-                    onNavigateToModelConfig = {
-                        navController.navigate(Route.ModelConfig.route)
+                    onNavigateToModelConfig = { configId ->
+                        navController.navigate(Route.ModelConfig.create(configId))
                     },
-                    onNavigateToMcpConfig = {
-                        navController.navigate(Route.McpConfig.route)
+                    onNavigateToMcpConfig = { serverId ->
+                        navController.navigate(Route.McpConfig.create(serverId))
                     },
                 )
             }
@@ -109,14 +111,31 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
                     onNavigateBack = { navController.popBackStack() },
                 )
             }
-            composable(Route.ModelConfig.route) {
-                // ModelConfig is part of settings package
-                com.memorandum.ui.settings.ModelConfigScreen(
+            composable(
+                route = Route.ModelConfig.route,
+                arguments = listOf(
+                    navArgument("configId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) {
+                ModelConfigScreen(
                     onNavigateBack = { navController.popBackStack() },
                 )
             }
-            composable(Route.McpConfig.route) {
-                com.memorandum.ui.settings.McpConfigScreen(
+            composable(
+                route = Route.McpConfig.route,
+                arguments = listOf(
+                    navArgument("serverId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) {
+                McpConfigScreen(
                     onNavigateBack = { navController.popBackStack() },
                 )
             }

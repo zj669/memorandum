@@ -1,0 +1,44 @@
+{
+  "id": "03-22-alarm-wiring-cleanup",
+  "name": "03-22-alarm-wiring-cleanup",
+  "title": "规划链路修复 + 清理测试代码",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "priority": "P2",
+  "creator": "zj669",
+  "assignee": "zj669",
+  "createdAt": "2026-03-22",
+  "completedAt": null,
+  "branch": "feature/alarm-wiring-cleanup",
+  "base_branch": "master",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
