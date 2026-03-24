@@ -3,6 +3,7 @@ package com.memorandum.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -21,8 +22,17 @@ import com.memorandum.ui.taskdetail.TaskDetailScreen
 import com.memorandum.ui.tasks.TasksScreen
 import com.memorandum.ui.today.TodayScreen
 
+data class NavigationRequest(
+    val destination: String,
+    val taskId: String? = null,
+    val nonce: Long,
+)
+
 @Composable
-fun AppNavGraph(modifier: Modifier = Modifier) {
+fun AppNavGraph(
+    initialNavigationRequest: NavigationRequest? = null,
+    modifier: Modifier = Modifier,
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -34,6 +44,23 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
         Route.Settings.route,
     )
     val showBottomBar = currentRoute in bottomTabRoutes
+
+    LaunchedEffect(initialNavigationRequest?.nonce) {
+        when (initialNavigationRequest?.destination) {
+            "task" -> {
+                if (!initialNavigationRequest.taskId.isNullOrBlank()) {
+                    navController.navigate(Route.TaskDetail.create(initialNavigationRequest.taskId)) {
+                        launchSingleTop = true
+                    }
+                }
+            }
+            "today" -> {
+                navController.navigate(Route.Today.route) {
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier,
@@ -57,7 +84,6 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
             startDestination = Route.Today.route,
             modifier = Modifier.padding(innerPadding),
         ) {
-            // Bottom tabs
             composable(Route.Today.route) {
                 TodayScreen(
                     onNavigateToEntry = { navController.navigate(Route.Entry.route) },
@@ -90,7 +116,6 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
                 )
             }
 
-            // Secondary pages
             composable(Route.Entry.route) {
                 EntryScreen(
                     onNavigateBack = { navController.popBackStack() },

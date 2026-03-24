@@ -1,0 +1,25 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "docs/plans/07-long-term-memory.md", "reason": "长期记忆目标与触发规则基线，定义 DONE/ACCEPTED_PLAN 等事件应如何驱动记忆更新"}
+{"file": "docs/plans/06-heartbeat-notification.md", "reason": "心跳、通知、权限引导与开机恢复的目标规格，是本次三个修复点的主规格来源"}
+{"file": "app/src/main/java/com/memorandum/domain/usecase/memory/RecordTaskEventUseCase.kt", "reason": "任务事件入库并异步检查记忆触发，是记忆自动沉淀链路入口"}
+{"file": "app/src/main/java/com/memorandum/domain/usecase/memory/TriggerMemoryUpdateUseCase.kt", "reason": "定义即时/累积触发条件，需核对与 MemoryOrchestrator 的触发逻辑是否一致"}
+{"file": "app/src/main/java/com/memorandum/ai/orchestrator/MemoryOrchestrator.kt", "reason": "长期记忆 AI 编排核心，需修复真正执行更新与页面可见结果之间的断链"}
+{"file": "app/src/main/java/com/memorandum/ui/taskdetail/TaskDetailViewModel.kt", "reason": "任务状态变更与计划接受目前在此发生，需补齐正确事件类型以触发记忆更新"}
+{"file": "app/src/main/java/com/memorandum/ai/orchestrator/HeartbeatOrchestrator.kt", "reason": "当前心跳已做 AI 决策和写库，但未形成系统通知触达，需要在此补全发送链路或交接点"}
+{"file": "app/src/main/java/com/memorandum/scheduler/HeartbeatWorker.kt", "reason": "后台心跳执行入口，验证修复后 worker 能真正触发用户可见提醒"}
+{"file": "app/src/main/java/com/memorandum/scheduler/NotificationHelper.kt", "reason": "统一通知渠道与发送实现，心跳通知与到时提醒都依赖此处真正触达用户"}
+{"file": "app/src/main/java/com/memorandum/scheduler/AlarmScheduler.kt", "reason": "到时提醒与稍后提醒依赖精确闹钟调度，需补权限缺口与恢复策略"}
+{"file": "app/src/main/java/com/memorandum/scheduler/AlarmReceiver.kt", "reason": "时间到达后广播转通知的主链路，需确保提醒展示与 taskRef/actionType 保持正确"}
+{"file": "app/src/main/java/com/memorandum/scheduler/NotificationActionReceiver.kt", "reason": "通知动作处理会影响 DONE/SNOOZE 事件与记忆更新，需要修复事件闭环"}
+{"file": "app/src/main/java/com/memorandum/scheduler/BootReceiver.kt", "reason": "当前仅恢复心跳，未恢复精确提醒，需要补齐重启后的 alarm 恢复"}
+{"file": "app/src/main/java/com/memorandum/ui/settings/SettingsScreen.kt", "reason": "设置页已承载心跳配置，适合作为通知/精确闹钟权限状态展示与授权引导入口"}
+{"file": "app/src/main/java/com/memorandum/ui/settings/SettingsViewModel.kt", "reason": "设置页状态聚合层，需接入权限状态、引导动作与恢复调度反馈"}
+{"file": "app/src/main/AndroidManifest.xml", "reason": "权限与 receiver 注册均在此声明，需确认 POST_NOTIFICATIONS/EXACT_ALARM/BOOT_COMPLETED 与 receiver 配置完整"}
+{"file": "app/src/main/java/com/memorandum/scheduler/PermissionManager.kt", "reason": "已有通知权限与 exact alarm 权限检查及设置跳转封装，权限引导实现应优先复用，避免在 Settings 层重复造轮子"}
+{"file": "docs/plans/08-settings-config.md", "reason": "设置页规格定义了心跳通知区块与权限引导期望，需要与本次设置入口补齐保持一致"}
+{"file": "app/src/main/java/com/memorandum/MemorandumApp.kt", "reason": "应用启动时已创建通知渠道，补齐心跳触达链路时需确认无需重复初始化渠道"}
+{"file": "app/src/main/java/com/memorandum/data/repository/NotificationRepositoryImpl.kt", "reason": "通知点击、snooze 与去重均依赖通知仓库实现，需核对 ID 写入与状态更新是否一致"}
+{"file": "app/src/main/java/com/memorandum/data/local/room/dao/TaskEventDao.kt", "reason": "记忆触发阈值与证据收集直接依赖 task_events 查询能力，需确认最近事件与按时间查询行为"}
+{"file": "app/src/main/java/com/memorandum/di/ReceiverEntryPoint.kt", "reason": "通知/闹钟/开机广播链路通过该入口获取依赖，修复接收器行为时需要同步核对依赖暴露是否完整"}

@@ -8,8 +8,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.memorandum.MainActivity
-import com.memorandum.R
+import com.memorandum.data.local.room.enums.NotificationActionType
 import com.memorandum.data.local.room.enums.NotificationType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -18,6 +17,7 @@ import javax.inject.Singleton
 @Singleton
 class NotificationHelper @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val permissionManager: PermissionManager,
 ) {
 
     companion object {
@@ -60,27 +60,36 @@ class NotificationHelper @Inject constructor(
 
     fun send(
         id: Int,
+        notificationRecordId: String,
         title: String,
         body: String,
         channelId: String,
         taskRef: String?,
-    ) {
-        Log.i(TAG, "Sending notification: id=$id, channel=$channelId, taskRef=$taskRef")
+        actionType: NotificationActionType,
+    ): Boolean {
+        if (!permissionManager.hasNotificationPermission() || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            Log.w(TAG, "Notification not delivered: permission missing or notifications disabled")
+            return false
+        }
+
+        Log.i(TAG, "Sending notification: id=$id, channel=$channelId, taskRef=$taskRef, actionType=$actionType")
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(com.memorandum.R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
-            .setContentIntent(buildContentIntent(taskRef))
-            .addAction(buildSnoozeAction(id, taskRef))
-            .addAction(buildMarkDoneAction(id, taskRef))
+            .setContentIntent(buildContentIntent(id, notificationRecordId, taskRef, actionType))
+            .addAction(buildSnoozeAction(id, notificationRecordId, taskRef))
+            .addAction(buildMarkDoneAction(id, notificationRecordId, taskRef))
             .build()
 
-        try {
+        return try {
             NotificationManagerCompat.from(context).notify(id, notification)
+            true
         } catch (e: SecurityException) {
             Log.w(TAG, "Notification permission not granted: ${e.message}")
+            false
         }
     }
 
@@ -90,29 +99,37 @@ class NotificationHelper @Inject constructor(
         else -> CHANNEL_TASK
     }
 
-    private fun buildContentIntent(taskRef: String?): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            if (taskRef != null) {
-                putExtra("navigate_to", "task")
-                putExtra("task_id", taskRef)
-            } else {
-                putExtra("navigate_to", "today")
-            }
+    private fun buildContentIntent(
+        notificationId: Int,
+        notificationRecordId: String,
+        taskRef: String?,
+        actionType: NotificationActionType,
+    ): PendingIntent {
+        val intent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_OPEN
+            putExtra("notification_id", notificationId)
+            putExtra("notification_record_id", notificationRecordId)
+            putExtra("task_ref", taskRef)
+            putExtra("action_type", actionType.name)
         }
 
-        return PendingIntent.getActivity(
+        return PendingIntent.getBroadcast(
             context,
-            taskRef?.hashCode() ?: 0,
+            notificationId * 10,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 
-    private fun buildSnoozeAction(notificationId: Int, taskRef: String?): NotificationCompat.Action {
+    private fun buildSnoozeAction(
+        notificationId: Int,
+        notificationRecordId: String,
+        taskRef: String?,
+    ): NotificationCompat.Action {
         val intent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_SNOOZE
             putExtra("notification_id", notificationId)
+            putExtra("notification_record_id", notificationRecordId)
             putExtra("task_ref", taskRef)
         }
 
@@ -126,10 +143,15 @@ class NotificationHelper @Inject constructor(
         return NotificationCompat.Action.Builder(0, "Snooze", pendingIntent).build()
     }
 
-    private fun buildMarkDoneAction(notificationId: Int, taskRef: String?): NotificationCompat.Action {
+    private fun buildMarkDoneAction(
+        notificationId: Int,
+        notificationRecordId: String,
+        taskRef: String?,
+    ): NotificationCompat.Action {
         val intent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_MARK_DONE
             putExtra("notification_id", notificationId)
+            putExtra("notification_record_id", notificationRecordId)
             putExtra("task_ref", taskRef)
         }
 

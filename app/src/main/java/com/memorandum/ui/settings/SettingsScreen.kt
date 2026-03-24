@@ -20,12 +20,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -34,9 +35,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -54,6 +57,12 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshPermissionStatus()
+    }
+
     SettingsContent(
         uiState = uiState,
         onNavigateToNotifications = onNavigateToNotifications,
@@ -64,6 +73,15 @@ fun SettingsScreen(
         onQuietHoursStartChanged = viewModel::onQuietHoursStartChanged,
         onQuietHoursEndChanged = viewModel::onQuietHoursEndChanged,
         onAllowNetworkChanged = viewModel::onAllowNetworkChanged,
+        onOpenNotificationSettings = {
+            viewModel.openNotificationSettings(context)
+            viewModel.refreshPermissionStatus()
+        },
+        onOpenExactAlarmSettings = {
+            viewModel.openExactAlarmSettings(context)
+            viewModel.refreshPermissionStatus()
+        },
+        onRefreshPermissions = viewModel::refreshPermissionStatus,
         onShowClearMemoryDialog = viewModel::onShowClearMemoryDialog,
         onDismissClearMemoryDialog = viewModel::onDismissClearMemoryDialog,
         onConfirmClearMemory = viewModel::onConfirmClearMemory,
@@ -89,6 +107,9 @@ private fun SettingsContent(
     onQuietHoursStartChanged: (String) -> Unit,
     onQuietHoursEndChanged: (String) -> Unit,
     onAllowNetworkChanged: (Boolean) -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onOpenExactAlarmSettings: () -> Unit,
+    onRefreshPermissions: () -> Unit,
     onShowClearMemoryDialog: () -> Unit,
     onDismissClearMemoryDialog: () -> Unit,
     onConfirmClearMemory: () -> Unit,
@@ -114,7 +135,6 @@ private fun SettingsContent(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // ── AI 模型 Section ──
             item(key = "section_ai_model") {
                 SectionHeader(title = "AI 模型")
             }
@@ -132,7 +152,6 @@ private fun SettingsContent(
                 )
             }
 
-            // ── MCP 服务 Section ──
             item(key = "section_mcp") {
                 Spacer(modifier = Modifier.height(16.dp))
                 SectionHeader(title = "MCP 服务")
@@ -152,7 +171,6 @@ private fun SettingsContent(
                 )
             }
 
-            // ── 心跳与通知 Section ──
             item(key = "section_heartbeat") {
                 Spacer(modifier = Modifier.height(16.dp))
                 SectionHeader(title = "心跳与通知")
@@ -171,8 +189,39 @@ private fun SettingsContent(
                     onEndChanged = onQuietHoursEndChanged,
                 )
             }
+            item(key = "notification_permission") {
+                PermissionStatusRow(
+                    title = "通知权限",
+                    description = if (uiState.notificationPermissionGranted) "已授权，可正常显示系统通知" else "未授权，心跳与提醒将无法送达",
+                    granted = uiState.notificationPermissionGranted,
+                    icon = { Icon(Icons.Default.Notifications, contentDescription = null) },
+                    actionLabel = "去授权",
+                    onAction = onOpenNotificationSettings,
+                )
+            }
+            item(key = "exact_alarm_permission") {
+                PermissionStatusRow(
+                    title = "精确闹钟权限",
+                    description = if (uiState.exactAlarmPermissionGranted) "已授权，可注册精确到时提醒" else "未授权，到时提醒与稍后提醒无法精确恢复",
+                    granted = uiState.exactAlarmPermissionGranted,
+                    icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+                    actionLabel = "去设置",
+                    onAction = onOpenExactAlarmSettings,
+                )
+            }
+            item(key = "open_notifications") {
+                AddButton(
+                    text = "查看通知历史",
+                    onClick = onNavigateToNotifications,
+                    modifier = Modifier.testTag("settings_notifications_history"),
+                )
+            }
+            item(key = "refresh_permissions") {
+                TextButton(onClick = onRefreshPermissions, modifier = Modifier.fillMaxWidth()) {
+                    Text("刷新权限状态")
+                }
+            }
 
-            // ── 隐私 Section ──
             item(key = "section_privacy") {
                 Spacer(modifier = Modifier.height(16.dp))
                 SectionHeader(title = "隐私")
@@ -187,7 +236,6 @@ private fun SettingsContent(
                 )
             }
 
-            // ── 数据管理 Section ──
             item(key = "section_data") {
                 Spacer(modifier = Modifier.height(16.dp))
                 SectionHeader(title = "数据管理")
@@ -217,7 +265,6 @@ private fun SettingsContent(
         }
     }
 
-    // Dialogs
     if (uiState.showClearMemoryDialog) {
         ConfirmDialog(
             title = "清除记忆数据",
@@ -249,8 +296,6 @@ private fun SettingsContent(
         )
     }
 }
-
-// ── Section Components ──
 
 @Composable
 private fun SectionHeader(
@@ -292,10 +337,7 @@ private fun LlmConfigCard(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = config.providerName,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                Text(text = config.providerName, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     text = config.modelName,
                     style = MaterialTheme.typography.bodySmall,
@@ -341,10 +383,7 @@ private fun McpServerCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = server.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                Text(text = server.name, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     text = server.baseUrl,
                     style = MaterialTheme.typography.bodySmall,
@@ -352,10 +391,7 @@ private fun McpServerCard(
                     maxLines = 1,
                 )
             }
-            Switch(
-                checked = server.enabled,
-                onCheckedChange = onToggle,
-            )
+            Switch(checked = server.enabled, onCheckedChange = onToggle)
         }
     }
 }
@@ -389,14 +425,9 @@ private fun HeartbeatFrequencySelector(
 ) {
     val options = listOf("LOW" to "低", "MEDIUM" to "中", "HIGH" to "高")
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "心跳频率",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Text(text = "心跳频率", style = MaterialTheme.typography.bodyMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { (value, label) ->
                 FilterChip(
                     selected = selected == value,
@@ -418,10 +449,7 @@ private fun QuietHoursRow(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "静默时段",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Text(text = "静默时段", style = MaterialTheme.typography.bodyMedium)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = "在此时段内不会发送通知",
@@ -433,7 +461,6 @@ private fun QuietHoursRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // DataStore connected; consider upgrading to Material3 TimePicker in a future UI pass
             Text(
                 text = start,
                 style = MaterialTheme.typography.bodyLarge,
@@ -445,6 +472,46 @@ private fun QuietHoursRow(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
+    }
+}
+
+@Composable
+private fun PermissionStatusRow(
+    title: String,
+    description: String,
+    granted: Boolean,
+    icon: @Composable () -> Unit,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon()
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = if (granted) "已授权" else "未授权",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onAction) {
+                Text(actionLabel)
+            }
         }
     }
 }
@@ -494,27 +561,17 @@ private fun DangerActionRow(
         Icon(
             imageVector = Icons.Default.DeleteOutline,
             contentDescription = null,
-            tint = if (isDestructive) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (isDestructive) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
+            color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
         )
     }
 }
-
-// ── Previews ──
 
 @Preview(showBackground = true)
 @Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
@@ -530,6 +587,8 @@ private fun SettingsContentPreview() {
                 mcpServers = listOf(
                     McpServerDisplay("1", "搜索服务", "https://mcp.example.com", true),
                 ),
+                notificationPermissionGranted = false,
+                exactAlarmPermissionGranted = true,
             ),
             onNavigateToNotifications = {},
             onNavigateToModelConfig = {},
@@ -539,6 +598,9 @@ private fun SettingsContentPreview() {
             onQuietHoursStartChanged = {},
             onQuietHoursEndChanged = {},
             onAllowNetworkChanged = {},
+            onOpenNotificationSettings = {},
+            onOpenExactAlarmSettings = {},
+            onRefreshPermissions = {},
             onShowClearMemoryDialog = {},
             onDismissClearMemoryDialog = {},
             onConfirmClearMemory = {},

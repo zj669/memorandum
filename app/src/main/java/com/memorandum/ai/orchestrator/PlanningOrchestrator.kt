@@ -293,7 +293,8 @@ class PlanningOrchestrator @Inject constructor(
                 val triggerAtMillis = parseBlockTimeToMillis(block.blockDate, block.startTime)
                 if (triggerAtMillis != null && triggerAtMillis > System.currentTimeMillis()) {
                     alarmScheduler.scheduleTaskAlarm(
-                        taskId = block.id,  // Use block ID so each block gets its own alarm
+                        alarmKey = block.id,
+                        taskId = taskId,
                         taskTitle = task.title,
                         triggerAtMillis = triggerAtMillis,
                         notificationTitle = "即将开始: ${task.title}",

@@ -11,12 +11,12 @@ import com.memorandum.data.local.room.entity.HeartbeatLogEntity
 import com.memorandum.data.local.room.entity.NotificationEntity
 import com.memorandum.data.local.room.enums.NotificationActionType
 import com.memorandum.data.local.room.enums.NotificationType
-import com.memorandum.data.local.room.enums.TaskStatus
 import com.memorandum.data.remote.llm.LlmClient
 import com.memorandum.data.remote.llm.LlmResponse
 import com.memorandum.data.repository.MemoryRepository
 import com.memorandum.data.repository.NotificationRepository
 import com.memorandum.data.repository.TaskRepository
+import com.memorandum.scheduler.NotificationHelper
 import com.memorandum.util.RetryHelper
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -43,6 +43,7 @@ class HeartbeatOrchestrator @Inject constructor(
     private val mcpOrchestrator: McpOrchestrator,
     private val schemaValidator: SchemaValidator,
     private val appPreferencesDataStore: AppPreferencesDataStore,
+    private val notificationHelper: NotificationHelper,
     private val retryHelper: RetryHelper,
     private val json: Json,
 ) {
@@ -50,19 +51,18 @@ class HeartbeatOrchestrator @Inject constructor(
     companion object {
         private const val TAG = "HeartbeatOrchestrator"
         private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
-        private const val DEDUP_WINDOW_MS = 2L * 60 * 60 * 1000 // 2 hours
+        private const val DEDUP_WINDOW_MS = 2L * 60 * 60 * 1000
     }
 
     suspend fun executeHeartbeat(): HeartbeatResult {
         Log.i(TAG, "Heartbeat triggered")
 
-        // Check quiet hours
         if (isInQuietHours()) {
             Log.i(TAG, "In quiet hours, skipping heartbeat")
+            writeLog(shouldNotify = false, reason = "In quiet hours", taskRef = null, usedMcp = false)
             return HeartbeatResult.Skipped("In quiet hours")
         }
 
-        // Gather context
         val activeTasks = taskRepository.observeActiveTasks().first()
         if (activeTasks.isEmpty()) {
             Log.i(TAG, "No active tasks, skipping heartbeat")
@@ -75,7 +75,6 @@ class HeartbeatOrchestrator @Inject constructor(
         val memories = memoryRepository.getForPlanning().getOrElse { emptyList() }
         val recentHeartbeats = heartbeatLogDao.getRecent(10)
 
-        // Build prompt and call LLM
         val request = HeartbeatPrompt.build(
             activeTasks = activeTasks,
             recentNotifications = recentNotifications,
@@ -100,7 +99,6 @@ class HeartbeatOrchestrator @Inject constructor(
             return HeartbeatResult.Failed("Failed to parse AI response")
         }
 
-        // Handle MCP round if needed
         val finalOutput = if (output.shouldUseMcp && output.mcpQueries.isNotEmpty()) {
             Log.i(TAG, "MCP requested, queries=${output.mcpQueries.size}")
             val mcpResult = mcpOrchestrator.executeQueries(output.mcpQueries)
@@ -111,7 +109,6 @@ class HeartbeatOrchestrator @Inject constructor(
             }
 
             if (mcpSummary != null) {
-                // Re-run with MCP results injected into user message
                 val secondRequest = request.copy(
                     userMessage = request.userMessage + "\n\n联网搜索结果：\n$mcpSummary\n\n请基于以上信息做出最终决策，should_use_mcp 必须为 false。",
                 )
@@ -126,7 +123,6 @@ class HeartbeatOrchestrator @Inject constructor(
             output
         }
 
-        // Validate
         val validation = schemaValidator.validateHeartbeatOutput(finalOutput)
         if (!validation.isValid) {
             Log.e(TAG, "Heartbeat validation failed: ${validation.errors}")
@@ -134,7 +130,6 @@ class HeartbeatOrchestrator @Inject constructor(
             return HeartbeatResult.Failed("Invalid AI response: ${validation.errors.joinToString()}")
         }
 
-        // Process decision
         if (!finalOutput.shouldNotify) {
             Log.i(TAG, "Heartbeat decided not to notify: ${finalOutput.reason}")
             writeLog(
@@ -152,13 +147,12 @@ class HeartbeatOrchestrator @Inject constructor(
                 return HeartbeatResult.Failed("should_notify=true but notification is null")
             }
 
-        // Client-side dedup and cooldown checks
         val taskRef = finalOutput.taskRef
         if (taskRef != null) {
-            if (isTaskInCooldown(taskRef)) {
-                Log.i(TAG, "Task $taskRef in cooldown, skipping notification")
-                writeLog(shouldNotify = false, reason = "Task in cooldown", taskRef = taskRef, usedMcp = false)
-                return HeartbeatResult.Skipped("Task in cooldown")
+            if (isDuplicateNotification(taskRef, NotificationType.HEARTBEAT_CHECK)) {
+                Log.i(TAG, "Task $taskRef in cooldown/dedup window, skipping notification")
+                writeLog(shouldNotify = false, reason = "Duplicate notification", taskRef = taskRef, usedMcp = false)
+                return HeartbeatResult.Skipped("Duplicate notification")
             }
 
             val notifType = parseNotificationType(notif.type)
@@ -169,7 +163,6 @@ class HeartbeatOrchestrator @Inject constructor(
             }
         }
 
-        // Save notification
         val notificationId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val notificationType = parseNotificationType(notif.type) ?: NotificationType.HEARTBEAT_CHECK
@@ -188,10 +181,30 @@ class HeartbeatOrchestrator @Inject constructor(
             snoozedUntil = null,
         )
 
-        notificationRepository.save(entity)
+        notificationRepository.save(entity).getOrElse { error ->
+            writeLog(shouldNotify = false, reason = "Save notification failed: ${error.message}", taskRef = taskRef, usedMcp = false)
+            return HeartbeatResult.Failed("Save notification failed: ${error.message}")
+        }
 
-        // Cooldown is tracked via the notification dedup window
-        // No explicit cooldown update needed since isDuplicateNotification checks recent notifications
+        val delivered = notificationHelper.send(
+            id = notificationId.hashCode(),
+            notificationRecordId = notificationId,
+            title = notif.title,
+            body = notif.body,
+            channelId = notificationHelper.channelForType(notificationType),
+            taskRef = taskRef,
+            actionType = actionType,
+        )
+        if (!delivered) {
+            writeLog(
+                shouldNotify = false,
+                reason = "Notification permission missing or notifications disabled",
+                taskRef = taskRef,
+                usedMcp = output.shouldUseMcp,
+                notificationType = notificationType,
+            )
+            return HeartbeatResult.Failed("Notification permission missing or notifications disabled")
+        }
 
         writeLog(
             shouldNotify = true,
@@ -201,7 +214,6 @@ class HeartbeatOrchestrator @Inject constructor(
             notificationType = notificationType,
         )
 
-        // Update last heartbeat timestamp
         appPreferencesDataStore.updateLastHeartbeat(now)
 
         Log.i(TAG, "Heartbeat notified: id=$notificationId, type=$notificationType, task=$taskRef")
@@ -215,27 +227,14 @@ class HeartbeatOrchestrator @Inject constructor(
             val start = LocalTime.parse(prefs.quietHoursStart, TIME_FMT)
             val end = LocalTime.parse(prefs.quietHoursEnd, TIME_FMT)
             if (start.isBefore(end)) {
-                // e.g., 23:00 - 07:00 wraps around midnight
-                // This case: start < end means no wrap, e.g., 09:00 - 17:00
                 now.isAfter(start) && now.isBefore(end)
             } else {
-                // Wraps around midnight: 23:00 - 07:00
                 now.isAfter(start) || now.isBefore(end)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse quiet hours: ${e.message}")
             false
         }
-    }
-
-    private suspend fun isTaskInCooldown(taskRef: String): Boolean {
-        val now = System.currentTimeMillis()
-        // Check recent notifications for this task within dedup window
-        return notificationRepository.isDuplicate(
-            taskRef = taskRef,
-            type = NotificationType.HEARTBEAT_CHECK,
-            windowMs = DEDUP_WINDOW_MS,
-        ).getOrElse { false }
     }
 
     private suspend fun isDuplicateNotification(taskRef: String, type: NotificationType): Boolean {
@@ -265,7 +264,7 @@ class HeartbeatOrchestrator @Inject constructor(
                     taskRef = taskRef,
                     usedMcp = usedMcp,
                     mcpSummary = mcpSummary,
-                )
+                ),
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write heartbeat log: ${e.message}")
@@ -274,11 +273,24 @@ class HeartbeatOrchestrator @Inject constructor(
 
     private fun parseHeartbeatOutput(response: LlmResponse): HeartbeatOutput? {
         return try {
-            json.decodeFromString<HeartbeatOutput>(response.content)
+            json.decodeFromString<HeartbeatOutput>(stripMarkdownCodeBlock(response.content))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse HeartbeatOutput: ${response.content.take(200)}")
             null
         }
+    }
+
+    private fun stripMarkdownCodeBlock(text: String): String {
+        val trimmed = text.trim()
+        val lines = trimmed.lines()
+        val firstCodeFence = lines.indexOfFirst { it.trim().startsWith("```") }
+        if (firstCodeFence >= 0) {
+            val lastCodeFence = lines.indexOfLast { it.trim() == "```" }
+            val start = firstCodeFence + 1
+            val end = if (lastCodeFence > firstCodeFence) lastCodeFence else lines.size
+            return lines.subList(start, end).joinToString("\n").trim()
+        }
+        return trimmed
     }
 
     private fun parseNotificationType(type: String): NotificationType? {

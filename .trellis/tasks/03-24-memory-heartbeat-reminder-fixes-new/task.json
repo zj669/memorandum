@@ -1,0 +1,44 @@
+{
+  "id": "memory-heartbeat-reminder-fixes-new",
+  "name": "memory-heartbeat-reminder-fixes-new",
+  "title": "修复并验证三个相关问题：1）长期记忆自动沉淀链路失效，要求任务完成/计划接受等关键事件能稳定触发记忆更新，避免记忆页长期为空；2）心跳机制已有调度与AI编排，但需补齐真正的系统通知触达链路，确保心跳产生的提醒不仅写库，也能被用户收到；3）到时弹窗提醒主链路已存在，但需补齐权限引导与重启后提醒恢复等缺口。",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "reminder",
+  "priority": "P2",
+  "creator": "zj669",
+  "assignee": "zj669",
+  "createdAt": "2026-03-24",
+  "completedAt": null,
+  "branch": "feature/memory-heartbeat-reminder-fixes-new",
+  "base_branch": "main",
+  "worktree_path": "/home/zj669/repo/trellis-worktrees/feature/memory-heartbeat-reminder-fixes-new",
+  "current_phase": 3,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

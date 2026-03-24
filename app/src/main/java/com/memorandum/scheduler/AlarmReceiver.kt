@@ -4,8 +4,15 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.memorandum.data.local.room.entity.NotificationEntity
+import com.memorandum.data.local.room.enums.NotificationActionType
+import com.memorandum.data.local.room.enums.NotificationType
 import com.memorandum.di.ReceiverEntryPoint
 import dagger.hilt.android.EntryPointAccessors
+import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AlarmReceiver : BroadcastReceiver() {
 
@@ -17,19 +24,53 @@ class AlarmReceiver : BroadcastReceiver() {
         val taskId = intent.getStringExtra("task_id") ?: return
         val title = intent.getStringExtra("title") ?: return
         val body = intent.getStringExtra("body") ?: return
-        val actionType = intent.getStringExtra("action_type") ?: "OPEN_TASK"
+        val actionType = intent.getStringExtra("action_type") ?: NotificationActionType.OPEN_TASK.name
+        val alarmKey = intent.getStringExtra("alarm_key") ?: taskId
 
-        Log.i(TAG, "Alarm received: taskId=$taskId, actionType=$actionType")
+        Log.i(TAG, "Alarm received: alarmKey=$alarmKey, taskId=$taskId, actionType=$actionType")
 
         val entryPoint = EntryPointAccessors.fromApplication(
-            context.applicationContext, ReceiverEntryPoint::class.java,
+            context.applicationContext,
+            ReceiverEntryPoint::class.java,
         )
-        entryPoint.notificationHelper().send(
-            id = taskId.hashCode(),
-            title = title,
-            body = body,
-            channelId = NotificationHelper.CHANNEL_TASK,
-            taskRef = taskId,
-        )
+
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val notificationRecordId = UUID.randomUUID().toString()
+                val parsedActionType = try {
+                    NotificationActionType.valueOf(actionType)
+                } catch (_: IllegalArgumentException) {
+                    NotificationActionType.OPEN_TASK
+                }
+
+                entryPoint.notificationRepository().save(
+                    NotificationEntity(
+                        id = notificationRecordId,
+                        type = NotificationType.TIME_TO_START,
+                        actionType = parsedActionType,
+                        title = title,
+                        body = body,
+                        taskRef = taskId,
+                        createdAt = System.currentTimeMillis(),
+                        clickedAt = null,
+                        dismissedAt = null,
+                        snoozedUntil = null,
+                    ),
+                )
+
+                entryPoint.notificationHelper().send(
+                    id = notificationRecordId.hashCode(),
+                    notificationRecordId = notificationRecordId,
+                    title = title,
+                    body = body,
+                    channelId = entryPoint.notificationHelper().channelForType(NotificationType.TIME_TO_START),
+                    taskRef = taskId,
+                    actionType = parsedActionType,
+                )
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 }
