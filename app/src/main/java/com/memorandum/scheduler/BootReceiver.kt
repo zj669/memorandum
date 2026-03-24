@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.memorandum.data.local.room.enums.TaskStatus
 import com.memorandum.di.ReceiverEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
@@ -47,12 +48,15 @@ class BootReceiver : BroadcastReceiver() {
 
                 futureBlocks.forEach { block ->
                     val task = entryPoint.taskRepository().observeById(block.taskId).first()
+                    if (task == null || task.status == TaskStatus.DONE || task.status == TaskStatus.DROPPED) {
+                        return@forEach
+                    }
                     entryPoint.alarmScheduler().scheduleTaskAlarm(
                         alarmKey = block.id,
                         taskId = block.taskId,
-                        taskTitle = task?.title.orEmpty(),
+                        taskTitle = task.title,
                         triggerAtMillis = parseBlockTimeToMillis(block.blockDate, block.startTime) ?: return@forEach,
-                        notificationTitle = "即将开始: ${task?.title.orEmpty()}",
+                        notificationTitle = "即将开始: ${task.title}",
                         notificationBody = block.reason,
                     )
                 }

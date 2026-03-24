@@ -1,5 +1,6 @@
 package com.memorandum.ui.taskdetail
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -39,6 +40,10 @@ class TaskDetailViewModel @Inject constructor(
     private val planningOrchestrator: PlanningOrchestrator,
     private val recordTaskEventUseCase: RecordTaskEventUseCase,
 ) : ViewModel() {
+    companion object {
+        private const val TAG = "TaskDetailViewModel"
+    }
+
     val taskId: String = savedStateHandle.get<String>("taskId")
         ?: error("TaskDetailViewModel requires taskId argument")
 
@@ -174,12 +179,16 @@ class TaskDetailViewModel @Inject constructor(
     }
 
     fun onReplan() {
-        _uiState.update { it.copy(isReplanning = true) }
+        _uiState.update { it.copy(isReplanning = true, error = null) }
         viewModelScope.launch {
             try {
                 planningOrchestrator.replan(taskId)
-            } catch (_: Exception) { }
-            _uiState.update { it.copy(isReplanning = false) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to replan task: taskId=$taskId, error=${e.message}")
+                _uiState.update { it.copy(error = "重新规划失败") }
+            } finally {
+                _uiState.update { it.copy(isReplanning = false) }
+            }
         }
     }
 }

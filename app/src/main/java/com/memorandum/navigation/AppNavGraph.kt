@@ -52,6 +52,10 @@ fun AppNavGraph(
                     navController.navigate(Route.TaskDetail.create(initialNavigationRequest.taskId)) {
                         launchSingleTop = true
                     }
+                } else {
+                    navController.navigate(Route.Today.route) {
+                        launchSingleTop = true
+                    }
                 }
             }
             "today" -> {

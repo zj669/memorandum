@@ -13,15 +13,18 @@ class ClearDataUseCase @Inject constructor(
 
     suspend fun clearMemories() {
         database.memoryDao().deleteAll()
+        database.userProfileDao().deleteAll()
         database.taskEventDao().deleteAll()
     }
 
     suspend fun clearNotifications() {
         database.notificationDao().deleteAll()
+        database.heartbeatLogDao().deleteAll()
     }
 
     suspend fun clearAll() {
         database.clearAllTables()
+        appPreferencesDataStore.clearAll()
         heartbeatScheduleManager.pauseHeartbeat()
     }
 }

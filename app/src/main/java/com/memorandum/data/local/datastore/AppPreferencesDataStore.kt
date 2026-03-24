@@ -76,6 +76,10 @@ class AppPreferencesDataStore @Inject constructor(
         dataStore.edit { it[KEY_LAST_MEMORY_UPDATE] = timestamp }
     }
 
+    suspend fun clearAll() {
+        dataStore.edit { it.clear() }
+    }
+
     private companion object {
         val KEY_HEARTBEAT_FREQUENCY = stringPreferencesKey("heartbeat_frequency")
         val KEY_QUIET_HOURS_START = stringPreferencesKey("quiet_hours_start")

@@ -23,12 +23,14 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -37,6 +39,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.memorandum.ui.common.ConfirmDialog
+import com.memorandum.ui.common.ErrorState
 import com.memorandum.ui.theme.MemorandumTheme
 
 @Composable
@@ -121,6 +127,9 @@ private fun SettingsContent(
     onConfirmClearAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var editingQuietHoursField by rememberSaveable { mutableStateOf<String?>(null) }
+    var draftQuietHours by rememberSaveable { mutableStateOf("") }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -185,8 +194,14 @@ private fun SettingsContent(
                 QuietHoursRow(
                     start = uiState.quietHoursStart,
                     end = uiState.quietHoursEnd,
-                    onStartChanged = onQuietHoursStartChanged,
-                    onEndChanged = onQuietHoursEndChanged,
+                    onStartClick = {
+                        editingQuietHoursField = "start"
+                        draftQuietHours = uiState.quietHoursStart
+                    },
+                    onEndClick = {
+                        editingQuietHoursField = "end"
+                        draftQuietHours = uiState.quietHoursEnd
+                    },
                 )
             }
             item(key = "notification_permission") {
@@ -217,8 +232,19 @@ private fun SettingsContent(
                 )
             }
             item(key = "refresh_permissions") {
-                TextButton(onClick = onRefreshPermissions, modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = onRefreshPermissions,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_refresh_permissions"),
+                ) {
                     Text("刷新权限状态")
+                }
+            }
+
+            item(key = "settings_error") {
+                uiState.error?.let { error ->
+                    ErrorState(message = error, onRetry = null)
                 }
             }
 
@@ -263,6 +289,22 @@ private fun SettingsContent(
                 )
             }
         }
+    }
+
+    if (editingQuietHoursField != null) {
+        TimeEditDialog(
+            title = if (editingQuietHoursField == "start") "设置静默开始时间" else "设置静默结束时间",
+            value = draftQuietHours,
+            onValueChange = { draftQuietHours = it },
+            onConfirm = {
+                when (editingQuietHoursField) {
+                    "start" -> onQuietHoursStartChanged(draftQuietHours)
+                    "end" -> onQuietHoursEndChanged(draftQuietHours)
+                }
+                editingQuietHoursField = null
+            },
+            onDismiss = { editingQuietHoursField = null },
+        )
     }
 
     if (uiState.showClearMemoryDialog) {
@@ -444,8 +486,8 @@ private fun HeartbeatFrequencySelector(
 private fun QuietHoursRow(
     start: String,
     end: String,
-    onStartChanged: (String) -> Unit,
-    onEndChanged: (String) -> Unit,
+    onStartClick: () -> Unit,
+    onEndClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -461,19 +503,55 @@ private fun QuietHoursRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = start,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            TextButton(onClick = onStartClick) {
+                Text(
+                    text = start,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Text(text = "至", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = end,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            TextButton(onClick = onEndClick) {
+                Text(
+                    text = end,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun TimeEditDialog(
+    title: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                label = { Text("时间（HH:mm）") },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 @Composable

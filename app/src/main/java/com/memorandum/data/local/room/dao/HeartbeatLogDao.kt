@@ -17,4 +17,7 @@ interface HeartbeatLogDao {
 
     @Query("SELECT * FROM heartbeat_logs ORDER BY checked_at DESC LIMIT 1")
     fun observeLatest(): Flow<HeartbeatLogEntity?>
+
+    @Query("DELETE FROM heartbeat_logs")
+    suspend fun deleteAll()
 }

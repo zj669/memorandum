@@ -18,4 +18,7 @@ interface UserProfileDao {
 
     @Query("SELECT * FROM user_profile WHERE id = 'default'")
     fun observe(): Flow<UserProfileEntity?>
+
+    @Query("DELETE FROM user_profile")
+    suspend fun deleteAll()
 }
