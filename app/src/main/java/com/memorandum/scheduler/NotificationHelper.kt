@@ -67,7 +67,7 @@ class NotificationHelper @Inject constructor(
         taskRef: String?,
         actionType: NotificationActionType,
     ): Boolean {
-        if (!permissionManager.hasNotificationPermission() || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+        if (!permissionManager.hasNotificationPermission()) {
             Log.w(TAG, "Notification not delivered: permission missing or notifications disabled")
             return false
         }

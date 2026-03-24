@@ -1,6 +1,7 @@
 package com.memorandum.ui.settings
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.memorandum.data.local.datastore.AppPreferencesDataStore
@@ -27,6 +28,10 @@ class SettingsViewModel @Inject constructor(
     private val clearDataUseCase: ClearDataUseCase,
     private val permissionManager: PermissionManager,
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "SettingsViewModel"
+    }
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -158,7 +163,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 clearDataUseCase.clearMemories()
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear memory data: ${e.message}")
+                _uiState.update { it.copy(error = "清除记忆数据失败") }
+            }
         }
     }
 
@@ -175,7 +183,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 clearDataUseCase.clearNotifications()
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear notification data: ${e.message}")
+                _uiState.update { it.copy(error = "清除通知历史失败") }
+            }
         }
     }
 
@@ -192,7 +203,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 clearDataUseCase.clearAll()
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear all app data: ${e.message}")
+                _uiState.update { it.copy(error = "清除全部数据失败") }
+            }
         }
     }
 }

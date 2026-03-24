@@ -7,11 +7,10 @@ import com.memorandum.ai.schema.SchemaValidator
 import com.memorandum.data.local.room.dao.TaskEventDao
 import com.memorandum.data.local.room.dao.UserProfileDao
 import com.memorandum.data.local.room.entity.MemoryEntity
-import com.memorandum.data.local.room.entity.UserProfileEntity
-import com.memorandum.data.local.room.enums.MemoryType
 import com.memorandum.data.remote.llm.LlmClient
 import com.memorandum.data.remote.llm.LlmResponse
 import com.memorandum.data.repository.MemoryRepository
+import com.memorandum.domain.usecase.memory.AggregateProfileUseCase
 import com.memorandum.util.RetryHelper
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -32,6 +31,7 @@ class MemoryOrchestrator @Inject constructor(
     private val taskEventDao: TaskEventDao,
     private val schemaValidator: SchemaValidator,
     private val retryHelper: RetryHelper,
+    private val aggregateProfileUseCase: AggregateProfileUseCase,
     private val json: Json,
 ) {
 
@@ -124,54 +124,10 @@ class MemoryOrchestrator @Inject constructor(
             ).onSuccess { downgraded++ }
         }
 
-        val allMemories = memoryRepository.getForPlanning().getOrElse { emptyList() }
-        aggregateUserProfile(allMemories)
+        aggregateProfileUseCase.aggregate()
 
         Log.i(TAG, "Memory update completed: added=$added, updated=$updated, downgraded=$downgraded")
         return MemoryUpdateResult.Updated(added = added, updated = updated, downgraded = downgraded)
-    }
-
-    private suspend fun aggregateUserProfile(memories: List<MemoryEntity>) {
-        if (memories.isEmpty()) return
-
-        try {
-            val profileJson = buildString {
-                appendLine("{")
-                val preferences = memories.filter { it.type == MemoryType.PREFERENCE && it.confidence >= 0.5f }
-                val patterns = memories.filter { it.type == MemoryType.PATTERN && it.confidence >= 0.5f }
-                val goals = memories.filter { it.type == MemoryType.LONG_TERM_GOAL && it.confidence >= 0.5f }
-
-                if (preferences.isNotEmpty()) {
-                    appendLine("  \"preferences\": [")
-                    appendLine(preferences.joinToString(",\n") { "    \"${it.subject}: ${it.content}\"" })
-                    appendLine("  ],")
-                }
-                if (patterns.isNotEmpty()) {
-                    appendLine("  \"patterns\": [")
-                    appendLine(patterns.joinToString(",\n") { "    \"${it.subject}: ${it.content}\"" })
-                    appendLine("  ],")
-                }
-                if (goals.isNotEmpty()) {
-                    appendLine("  \"goals\": [")
-                    appendLine(goals.joinToString(",\n") { "    \"${it.subject}: ${it.content}\"" })
-                    appendLine("  ]")
-                }
-                appendLine("}")
-            }
-
-            val now = System.currentTimeMillis()
-            val existing = userProfileDao.get()
-            val entity = UserProfileEntity(
-                id = "default",
-                profileJson = profileJson,
-                version = (existing?.version ?: 0) + 1,
-                updatedAt = now,
-            )
-            userProfileDao.upsert(entity)
-            Log.d(TAG, "User profile aggregated, version=${entity.version}")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to aggregate user profile: ${e.message}")
-        }
     }
 
     private fun parseMemoryOutput(response: LlmResponse): MemoryOutput? {
@@ -196,12 +152,12 @@ class MemoryOrchestrator @Inject constructor(
         return trimmed
     }
 
-    private fun parseMemoryType(type: String): MemoryType? {
+    private fun parseMemoryType(type: String): com.memorandum.data.local.room.enums.MemoryType? {
         return try {
-            MemoryType.valueOf(type.uppercase())
+            com.memorandum.data.local.room.enums.MemoryType.valueOf(type.uppercase())
         } catch (_: IllegalArgumentException) {
             Log.w(TAG, "Unknown MemoryType from AI: $type, defaulting to TASK_CONTEXT")
-            MemoryType.TASK_CONTEXT
+            com.memorandum.data.local.room.enums.MemoryType.TASK_CONTEXT
         }
     }
 }
