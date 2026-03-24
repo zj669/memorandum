@@ -1,8 +1,10 @@
 package com.memorandum.ai.prompt
 
+import com.memorandum.ai.schema.StructuredOutputTools
 import com.memorandum.data.local.room.entity.EntryEntity
 import com.memorandum.data.local.room.entity.MemoryEntity
 import com.memorandum.data.remote.llm.LlmRequest
+import com.memorandum.data.remote.llm.LlmToolChoice
 import com.memorandum.data.remote.llm.ResponseFormat
 
 object ClarifierPrompt {
@@ -31,7 +33,7 @@ object ClarifierPrompt {
             appendLine("- 如果信息已经足够，设置 ask=false")
             appendLine("- 不要问无关紧要的问题")
             appendLine()
-            appendLine("输出 JSON 格式：")
+            appendLine("请通过工具 submit_clarifier_output 返回结构化结果；不要输出 JSON 文本。")
             appendLine("""
 {
   "ask": true,
@@ -59,6 +61,8 @@ object ClarifierPrompt {
             systemPrompt = systemPrompt,
             userMessage = userMessage,
             responseFormat = ResponseFormat.JSON,
+            tools = listOf(StructuredOutputTools.clarifier),
+            toolChoice = LlmToolChoice.Specific(StructuredOutputTools.clarifier.name),
         )
     }
 }

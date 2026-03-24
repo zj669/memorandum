@@ -4,8 +4,11 @@ import android.util.Log
 import com.memorandum.data.local.room.entity.McpServerEntity
 import com.memorandum.util.CryptoHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -39,6 +42,8 @@ class HttpMcpClient @Inject constructor(
     }
 
     private val requestIdCounter = AtomicInteger(1)
+    private val initializationMutex = Mutex()
+    private val initializedServers = mutableSetOf<String>()
 
     private val client: OkHttpClient by lazy {
         okHttpClient.newBuilder()
@@ -50,6 +55,7 @@ class HttpMcpClient @Inject constructor(
     override suspend fun listTools(server: McpServerEntity): Result<List<McpTool>> =
         withContext(Dispatchers.IO) {
             runCatching {
+                ensureInitialized(server)
                 val body = buildJsonRpcRequest("tools/list")
                 val responseBody = executeRequest(server, body)
                 parseToolsList(responseBody)
@@ -59,19 +65,15 @@ class HttpMcpClient @Inject constructor(
     override suspend fun callTool(
         server: McpServerEntity,
         toolName: String,
-        arguments: Map<String, Any>,
+        arguments: Map<String, JsonElement>,
     ): Result<McpToolResult> = withContext(Dispatchers.IO) {
         runCatching {
+            ensureInitialized(server)
             val params = buildJsonObject {
                 put("name", toolName)
                 put("arguments", buildJsonObject {
                     for ((key, value) in arguments) {
-                        when (value) {
-                            is String -> put(key, value)
-                            is Number -> put(key, value.toDouble())
-                            is Boolean -> put(key, value)
-                            else -> put(key, value.toString())
-                        }
+                        put(key, value)
                     }
                 })
             }
@@ -81,13 +83,50 @@ class HttpMcpClient @Inject constructor(
         }
     }
 
-    override suspend fun testConnection(server: McpServerEntity): Result<Boolean> =
+    override suspend fun testConnection(server: McpServerEntity): Result<List<McpTool>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 listTools(server).getOrThrow()
-                true
             }
         }
+
+    private suspend fun ensureInitialized(server: McpServerEntity) {
+        if (initializedServers.contains(server.id)) return
+
+        initializationMutex.withLock {
+            if (initializedServers.contains(server.id)) return
+
+            val initParams = buildJsonObject {
+                put("protocolVersion", "2025-06-18")
+                put("capabilities", buildJsonObject {
+                    put("tools", buildJsonObject {})
+                })
+                put("clientInfo", buildJsonObject {
+                    put("name", "Memorandum")
+                    put("version", "1.0")
+                })
+            }
+            val initializeBody = buildJsonRpcRequest("initialize", initParams)
+            val initializeResponse = executeRequest(server, initializeBody)
+            validateInitializeResponse(server, initializeResponse)
+
+            val initializedBody = buildJsonRpcNotification("notifications/initialized")
+            executeRequest(server, initializedBody, expectsResponse = false)
+
+            initializedServers.add(server.id)
+            Log.i(TAG, "MCP initialized: server=${server.name}")
+        }
+    }
+
+    private fun validateInitializeResponse(server: McpServerEntity, responseBody: String) {
+        val root = json.parseToJsonElement(responseBody).jsonObject
+        val result = root["result"]?.jsonObject
+            ?: throw IOException("Invalid initialize response from ${server.name}")
+        val protocolVersion = result["protocolVersion"]?.jsonPrimitive?.content.orEmpty()
+        if (protocolVersion.isBlank()) {
+            throw IOException("Missing protocolVersion in initialize response from ${server.name}")
+        }
+    }
 
     private fun buildJsonRpcRequest(method: String, params: JsonObject? = null): String {
         val obj = buildJsonObject {
@@ -101,7 +140,18 @@ class HttpMcpClient @Inject constructor(
         return obj.toString()
     }
 
-    private fun executeRequest(server: McpServerEntity, jsonBody: String): String {
+    private fun buildJsonRpcNotification(method: String, params: JsonObject? = null): String {
+        val obj = buildJsonObject {
+            put("jsonrpc", "2.0")
+            put("method", method)
+            if (params != null) {
+                put("params", params)
+            }
+        }
+        return obj.toString()
+    }
+
+    private fun executeRequest(server: McpServerEntity, jsonBody: String, expectsResponse: Boolean = true): String {
         val requestBuilder = Request.Builder()
             .url(server.baseUrl)
             .addHeader("Content-Type", "application/json")
@@ -133,10 +183,11 @@ class HttpMcpClient @Inject constructor(
                 }
             }
 
-            // Handle SSE format: extract JSON from "data:" lines
-            val body = extractJsonFromSse(rawBody)
+            if (!expectsResponse) {
+                return@use rawBody
+            }
 
-            // Check JSON-RPC error
+            val body = extractJsonFromSse(rawBody)
             val root = json.parseToJsonElement(body).jsonObject
             val error = root["error"]?.jsonObject
             if (error != null) {
@@ -159,7 +210,6 @@ class HttpMcpClient @Inject constructor(
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             return trimmed
         }
-        // Extract the last "data:" line containing JSON
         val dataLines = trimmed.lines()
             .filter { it.startsWith("data:") }
             .map { it.removePrefix("data:").trim() }

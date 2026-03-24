@@ -80,6 +80,12 @@ private class LazyLlmClient(
         return client.testConnection()
     }
 
+    override suspend fun getCapabilities(): Result<com.memorandum.data.remote.llm.LlmCapabilities> {
+        val client = getOrCreateClient()
+            ?: return Result.failure(IllegalStateException("No LLM configuration found."))
+        return client.getCapabilities()
+    }
+
     private suspend fun getOrCreateClient(): OpenAiCompatibleClient? {
         val config = configRepository.getDefaultLlm().getOrNull() ?: return null
         // Recreate if config changed

@@ -1,6 +1,10 @@
 package com.memorandum.ui.settings
 
+import android.Manifest
 import android.content.res.Configuration
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +46,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.memorandum.ui.common.ConfirmDialog
 import com.memorandum.ui.theme.MemorandumTheme
@@ -54,6 +62,24 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = viewModel::onNotificationPermissionResult,
+    )
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     SettingsContent(
         uiState = uiState,
         onNavigateToNotifications = onNavigateToNotifications,
@@ -64,6 +90,18 @@ fun SettingsScreen(
         onQuietHoursStartChanged = viewModel::onQuietHoursStartChanged,
         onQuietHoursEndChanged = viewModel::onQuietHoursEndChanged,
         onAllowNetworkChanged = viewModel::onAllowNetworkChanged,
+        onRequestNotificationPermission = {
+            if (
+                uiState.shouldShowRuntimeNotificationRequest &&
+                !uiState.notificationPermissionGranted
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                viewModel.openNotificationSettings()
+            }
+        },
+        onOpenNotificationSettings = viewModel::openNotificationSettings,
+        onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
         onShowClearMemoryDialog = viewModel::onShowClearMemoryDialog,
         onDismissClearMemoryDialog = viewModel::onDismissClearMemoryDialog,
         onConfirmClearMemory = viewModel::onConfirmClearMemory,
@@ -89,6 +127,9 @@ private fun SettingsContent(
     onQuietHoursStartChanged: (String) -> Unit,
     onQuietHoursEndChanged: (String) -> Unit,
     onAllowNetworkChanged: (Boolean) -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onOpenExactAlarmSettings: () -> Unit,
     onShowClearMemoryDialog: () -> Unit,
     onDismissClearMemoryDialog: () -> Unit,
     onConfirmClearMemory: () -> Unit,
@@ -169,6 +210,48 @@ private fun SettingsContent(
                     end = uiState.quietHoursEnd,
                     onStartChanged = onQuietHoursStartChanged,
                     onEndChanged = onQuietHoursEndChanged,
+                )
+            }
+            item(key = "notification_permission") {
+                PermissionStatusRow(
+                    title = "通知权限",
+                    granted = uiState.notificationPermissionGranted,
+                    grantedLabel = "已授权",
+                    deniedLabel = "未授权",
+                    subtitle = if (
+                        uiState.shouldShowRuntimeNotificationRequest &&
+                        !uiState.notificationPermissionGranted
+                    ) {
+                        "未授权时，心跳与到时提醒无法真正显示系统通知。可先直接请求授权，失败后再去系统设置。"
+                    } else {
+                        "未授权时，心跳与到时提醒无法真正显示系统通知。"
+                    },
+                    buttonText = when {
+                        uiState.notificationPermissionGranted -> "去设置"
+                        uiState.shouldShowRuntimeNotificationRequest -> "立即授权"
+                        else -> "去授权"
+                    },
+                    onClick = if (
+                        uiState.shouldShowRuntimeNotificationRequest &&
+                        !uiState.notificationPermissionGranted
+                    ) {
+                        onRequestNotificationPermission
+                    } else {
+                        onOpenNotificationSettings
+                    },
+                    modifier = Modifier.testTag("settings_notification_permission"),
+                )
+            }
+            item(key = "exact_alarm_permission") {
+                PermissionStatusRow(
+                    title = "精确闹钟权限",
+                    granted = uiState.exactAlarmPermissionGranted,
+                    grantedLabel = "已开启",
+                    deniedLabel = "未开启",
+                    subtitle = "未开启时，稍后提醒与到时提醒可能无法准时恢复。",
+                    buttonText = "去开启",
+                    onClick = onOpenExactAlarmSettings,
+                    modifier = Modifier.testTag("settings_exact_alarm_permission"),
                 )
             }
 
@@ -433,7 +516,6 @@ private fun QuietHoursRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // DataStore connected; consider upgrading to Material3 TimePicker in a future UI pass
             Text(
                 text = start,
                 style = MaterialTheme.typography.bodyLarge,
@@ -474,6 +556,46 @@ private fun SettingsToggleRow(
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun PermissionStatusRow(
+    title: String,
+    granted: Boolean,
+    grantedLabel: String,
+    deniedLabel: String,
+    subtitle: String,
+    buttonText: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = if (granted) grantedLabel else deniedLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (granted) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onClick) {
+            Text(buttonText)
+        }
     }
 }
 
@@ -530,6 +652,7 @@ private fun SettingsContentPreview() {
                 mcpServers = listOf(
                     McpServerDisplay("1", "搜索服务", "https://mcp.example.com", true),
                 ),
+                shouldShowRuntimeNotificationRequest = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
             ),
             onNavigateToNotifications = {},
             onNavigateToModelConfig = {},
@@ -539,6 +662,9 @@ private fun SettingsContentPreview() {
             onQuietHoursStartChanged = {},
             onQuietHoursEndChanged = {},
             onAllowNetworkChanged = {},
+            onRequestNotificationPermission = {},
+            onOpenNotificationSettings = {},
+            onOpenExactAlarmSettings = {},
             onShowClearMemoryDialog = {},
             onDismissClearMemoryDialog = {},
             onConfirmClearMemory = {},

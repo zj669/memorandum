@@ -3,10 +3,6 @@ package com.memorandum.domain.usecase.memory
 import android.util.Log
 import com.memorandum.data.local.room.dao.TaskEventDao
 import com.memorandum.data.local.room.entity.TaskEventEntity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
@@ -18,8 +14,6 @@ class RecordTaskEventUseCase @Inject constructor(
     companion object {
         private const val TAG = "RecordTaskEvent"
     }
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun record(
         taskId: String,
@@ -36,13 +30,10 @@ class RecordTaskEventUseCase @Inject constructor(
         taskEventDao.insert(event)
         Log.i(TAG, "Recorded event: taskId=$taskId, type=$eventType")
 
-        // Async trigger check (don't block the caller)
-        scope.launch {
-            try {
-                triggerMemoryUpdateUseCase.checkAndTrigger(eventType)
-            } catch (e: Exception) {
-                Log.w(TAG, "Memory trigger check failed: ${e.message}")
-            }
+        runCatching {
+            triggerMemoryUpdateUseCase.checkAndTrigger(eventType)
+        }.onFailure { error ->
+            Log.w(TAG, "Memory trigger check failed: taskId=$taskId, type=$eventType, error=${error.message}")
         }
     }
 }

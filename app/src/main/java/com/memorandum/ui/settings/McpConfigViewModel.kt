@@ -4,20 +4,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.memorandum.data.local.room.entity.McpServerEntity
+import com.memorandum.data.remote.mcp.McpClient
 import com.memorandum.data.repository.ConfigRepository
 import com.memorandum.util.CryptoHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 import javax.inject.Inject
 
@@ -26,7 +21,7 @@ class McpConfigViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val configRepository: ConfigRepository,
     private val cryptoHelper: CryptoHelper,
-    private val okHttpClient: OkHttpClient,
+    private val mcpClient: McpClient,
 ) : ViewModel() {
 
     private val serverId: String? = savedStateHandle["serverId"]
@@ -90,54 +85,17 @@ class McpConfigViewModel @Inject constructor(
     fun onTestConnection() {
         viewModelScope.launch {
             _uiState.update { it.copy(isTesting = true, testResult = null) }
-            try {
-                val state = _uiState.value
-                val result = withContext(Dispatchers.IO) {
-                    testMcpConnection(state.baseUrl, state.authType, state.authValue)
-                }
-                _uiState.update { it.copy(isTesting = false, testResult = result) }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isTesting = false,
-                        testResult = McpTestResult.Failed(e.message ?: "连接失败"),
-                    )
-                }
-            }
-        }
-    }
-
-    private fun testMcpConnection(baseUrl: String, authType: AuthType, authValue: String): McpTestResult {
-        val jsonBody = """{"jsonrpc":"2.0","method":"tools/list","id":1}"""
-        val requestBuilder = Request.Builder()
-            .url(baseUrl.trimEnd('/'))
-            .addHeader("Content-Type", "application/json")
-            .post(jsonBody.toRequestBody("application/json".toMediaType()))
-
-        when (authType) {
-            AuthType.BEARER -> requestBuilder.addHeader("Authorization", "Bearer $authValue")
-            AuthType.HEADER -> {
-                val parts = authValue.split(":", limit = 2)
-                if (parts.size == 2) {
-                    requestBuilder.addHeader(parts[0].trim(), parts[1].trim())
-                }
-            }
-            AuthType.NONE -> { }
-        }
-
-        val response = okHttpClient.newCall(requestBuilder.build()).execute()
-        return if (response.isSuccessful) {
-            val body = response.body?.string().orEmpty()
-            val toolNames = try {
-                // Simple extraction of tool names from JSON-RPC response
-                val regex = """"name"\s*:\s*"([^"]+)"""".toRegex()
-                regex.findAll(body).map { it.groupValues[1] }.toList()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            McpTestResult.Success(toolNames.ifEmpty { listOf("连接成功") })
-        } else {
-            McpTestResult.Failed("HTTP ${response.code}: ${response.message}")
+            val state = _uiState.value
+            val testServer = buildDraftServer(state)
+            val result = mcpClient.testConnection(testServer).fold(
+                onSuccess = { tools ->
+                    McpTestResult.Success(tools.map { it.name }.ifEmpty { listOf("连接成功") })
+                },
+                onFailure = { error ->
+                    McpTestResult.Failed(error.message ?: "连接失败")
+                },
+            )
+            _uiState.update { it.copy(isTesting = false, testResult = result) }
         }
     }
 
@@ -183,6 +141,24 @@ class McpConfigViewModel @Inject constructor(
                 _uiState.update { it.copy(savedSuccessfully = true) }
             } catch (_: Exception) { }
         }
+    }
+
+    private fun buildDraftServer(state: McpConfigUiState): McpServerEntity {
+        val encryptedAuth = state.authValue.takeIf { it.isNotBlank() }?.let { cryptoHelper.encrypt(it) }
+        val toolList = state.toolWhitelist
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        return McpServerEntity(
+            id = serverId ?: "draft",
+            name = state.name.ifBlank { "MCP" },
+            baseUrl = state.baseUrl.trim(),
+            authType = state.authType.name,
+            authValueEncrypted = encryptedAuth,
+            enabled = true,
+            toolWhitelistJson = toolList,
+            updatedAt = System.currentTimeMillis(),
+        )
     }
 
     private fun validateForm() {

@@ -1,0 +1,15 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check-backend.md", "reason": "Backend check spec"}
+{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "docs/plans/07-long-term-memory.md", "reason": "验收记忆触发与记忆页非空是否符合长期记忆规格"}
+{"file": "docs/plans/06-heartbeat-notification.md", "reason": "验收心跳通知触达、权限引导与开机恢复是否符合通知模块规格"}
+{"file": "app/src/main/java/com/memorandum/ai/orchestrator/MemoryOrchestrator.kt", "reason": "检查触发后是否真正产生记忆写入和画像聚合结果"}
+{"file": "app/src/main/java/com/memorandum/ai/orchestrator/HeartbeatOrchestrator.kt", "reason": "检查 should_notify=true 时是否既写库又触发系统通知，且保护链未被破坏"}
+{"file": "app/src/main/java/com/memorandum/scheduler/NotificationHelper.kt", "reason": "检查通知渠道、action、taskRef 跳转与权限失败降级日志"}
+{"file": "app/src/main/java/com/memorandum/scheduler/BootReceiver.kt", "reason": "检查重启恢复是否同时覆盖 heartbeat 与 alarm"}
+{"file": "app/src/main/java/com/memorandum/ui/settings/SettingsScreen.kt", "reason": "检查权限状态与引导 UI 是否可见、文案清晰、交互闭环"}
+{"file": "app/src/main/java/com/memorandum/ui/memory/MemoryViewModel.kt", "reason": "检查修复后记忆页能观察到真实记忆与画像数据，不再长期为空"}
+{"file": "app/src/main/java/com/memorandum/scheduler/PermissionManager.kt", "reason": "检查设置页展示的通知/精确闹钟权限状态与跳转是否复用统一权限判断逻辑"}
+{"file": "docs/plans/08-settings-config.md", "reason": "检查权限引导入口、心跳与通知设置展示是否符合既有设置规格"}
+{"file": ".trellis/tasks/03-22-phase2b-settings-config/prd.md", "reason": "对照既有设置任务验收口径，确认本次补齐没有破坏已有设置分区与交互预期"}
+{"file": "app/src/main/java/com/memorandum/MemorandumApp.kt", "reason": "检查通知渠道初始化是否仍由 Application 统一负责，避免因新增发送链路造成渠道初始化遗漏"}

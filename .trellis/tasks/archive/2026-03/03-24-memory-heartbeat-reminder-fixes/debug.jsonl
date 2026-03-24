@@ -1,0 +1,10 @@
+{"file": ".claude/commands/trellis/check-backend.md", "reason": "Backend check spec"}
+{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "app/src/main/java/com/memorandum/domain/usecase/memory/TriggerMemoryUpdateUseCase.kt", "reason": "排查即时事件未触发、累积阈值未命中或 lastMemoryUpdateAt 更新异常"}
+{"file": "app/src/main/java/com/memorandum/data/repository/TaskRepositoryImpl.kt", "reason": "排查某些路径直接写 task_events 而未走 RecordTaskEventUseCase，导致记忆触发逻辑被绕过"}
+{"file": "app/src/main/java/com/memorandum/scheduler/AlarmScheduler.kt", "reason": "排查 exact alarm 权限缺失、pendingIntent key 设计与重启恢复失败"}
+{"file": "app/src/main/java/com/memorandum/scheduler/NotificationActionReceiver.kt", "reason": "排查通知动作导致 DONE/SNOOZE 只写库不触发记忆更新或提醒重建异常"}
+{"file": "app/src/main/java/com/memorandum/MainActivity.kt", "reason": "排查通知点击后的跳转 extras 是否真正被消费，否则用户点通知无实际落点"}
+{"file": "app/src/main/java/com/memorandum/scheduler/PermissionManager.kt", "reason": "排查权限状态判断与设置跳转是否正确，避免 UI 显示已授权但实际无法发通知/注册 exact alarm"}
+{"file": "app/src/main/java/com/memorandum/data/repository/NotificationRepositoryImpl.kt", "reason": "排查通知 clicked/dismissed/snoozed 更新与通知实体 ID 是否一致，避免 action 回写落空"}
+{"file": "app/src/main/java/com/memorandum/data/local/room/dao/TaskEventDao.kt", "reason": "排查即时事件与阈值事件查询是否遗漏最新 task_events，导致记忆更新判断失真"}

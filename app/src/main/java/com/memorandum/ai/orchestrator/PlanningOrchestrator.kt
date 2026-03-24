@@ -6,6 +6,7 @@ import com.memorandum.ai.prompt.PlannerPrompt
 import com.memorandum.ai.schema.ClarifierOutput
 import com.memorandum.ai.schema.PlannerOutput
 import com.memorandum.ai.schema.SchemaValidator
+import com.memorandum.ai.schema.StructuredOutputTools
 import com.memorandum.data.local.room.dao.UserProfileDao
 import com.memorandum.data.local.room.entity.EntryEntity
 import com.memorandum.data.local.room.entity.MemoryEntity
@@ -22,6 +23,7 @@ import com.memorandum.data.remote.llm.ImageInput
 import com.memorandum.data.remote.llm.ImageProcessor
 import com.memorandum.data.remote.llm.LlmClient
 import com.memorandum.data.remote.llm.LlmResponse
+import com.memorandum.data.remote.llm.LlmToolChoice
 import com.memorandum.data.repository.EntryRepository
 import com.memorandum.data.repository.MemoryRepository
 import com.memorandum.data.repository.TaskRepository
@@ -190,13 +192,28 @@ class PlanningOrchestrator @Inject constructor(
             mcpResults = mcpResults,
             clarificationUsed = entry.clarificationUsed,
         )
+        val supportsTools = llmClient.getCapabilities().getOrNull()?.supportsTools == true
+        if (!supportsTools) {
+            Log.w(TAG, "Planner provider lacks tool support, falling back to text parsing: entryId=${entry.id}")
+        }
+        val chatRequest = if (supportsTools) {
+            request
+        } else {
+            request.copy(tools = emptyList(), toolChoice = LlmToolChoice.None)
+        }
 
         val result = retryHelper.retryWithBackoff(maxRetries = 2) {
-            llmClient.chat(request).getOrThrow()
+            llmClient.chat(chatRequest).getOrThrow()
         }
 
         return result.fold(
-            onSuccess = { response -> parsePlannerOutput(response) },
+            onSuccess = { response ->
+                parsePlannerOutput(response, supportsTools)
+                    ?: run {
+                        Log.e(TAG, "Planner output parsing failed across tool/text paths: entryId=${entry.id}")
+                        null
+                    }
+            },
             onFailure = { e ->
                 Log.e(TAG, "Planner LLM call failed: ${e.message}")
                 null
@@ -213,13 +230,28 @@ class PlanningOrchestrator @Inject constructor(
             userProfileJson = context.userProfileJson,
             memories = context.memories,
         )
+        val supportsTools = llmClient.getCapabilities().getOrNull()?.supportsTools == true
+        if (!supportsTools) {
+            Log.w(TAG, "Clarifier provider lacks tool support, falling back to text parsing: entryId=${entry.id}")
+        }
+        val chatRequest = if (supportsTools) {
+            request
+        } else {
+            request.copy(tools = emptyList(), toolChoice = LlmToolChoice.None)
+        }
 
         val result = retryHelper.retryWithBackoff(maxRetries = 1) {
-            llmClient.chat(request).getOrThrow()
+            llmClient.chat(chatRequest).getOrThrow()
         }
 
         return result.fold(
-            onSuccess = { response -> parseClarifierOutput(response) },
+            onSuccess = { response ->
+                parseClarifierOutput(response, supportsTools)
+                    ?: run {
+                        Log.e(TAG, "Clarifier output parsing failed across tool/text paths: entryId=${entry.id}")
+                        null
+                    }
+            },
             onFailure = { e ->
                 Log.w(TAG, "Clarifier LLM call failed, skipping: ${e.message}")
                 null
@@ -293,11 +325,12 @@ class PlanningOrchestrator @Inject constructor(
                 val triggerAtMillis = parseBlockTimeToMillis(block.blockDate, block.startTime)
                 if (triggerAtMillis != null && triggerAtMillis > System.currentTimeMillis()) {
                     alarmScheduler.scheduleTaskAlarm(
-                        taskId = block.id,  // Use block ID so each block gets its own alarm
+                        taskId = task.id,
                         taskTitle = task.title,
                         triggerAtMillis = triggerAtMillis,
                         notificationTitle = "即将开始: ${task.title}",
                         notificationBody = block.reason,
+                        requestCodeKey = block.id,
                     )
                     Log.i(TAG, "Alarm scheduled for block: blockId=${block.id}, triggerAt=$triggerAtMillis")
                 }
@@ -373,23 +406,50 @@ class PlanningOrchestrator @Inject constructor(
         return trimmed
     }
 
-    private fun parsePlannerOutput(response: LlmResponse): PlannerOutput? {
+    private fun parsePlannerOutput(response: LlmResponse, preferTools: Boolean): PlannerOutput? {
+        if (preferTools) {
+            parseToolArguments(response, StructuredOutputTools.planner.name)?.let { toolArgs ->
+                return try {
+                    json.decodeFromString<PlannerOutput>(toolArgs.toString())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decode planner tool args: ${e.message}, raw=${toolArgs.toString().take(300)}")
+                    null
+                }
+            }
+            Log.w(TAG, "Planner tool call missing, falling back to text response parsing")
+        }
+
         return try {
             val cleaned = stripMarkdownCodeBlock(response.content)
-            Log.d(TAG, "Parsing PlannerOutput: ${cleaned.take(100)}")
+            Log.d(TAG, "Parsing PlannerOutput fallback: ${cleaned.take(100)}")
             json.decodeFromString<PlannerOutput>(cleaned)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse PlannerOutput: ${e.message}, raw=${response.content.take(300)}")
+            Log.e(TAG, "Failed to parse PlannerOutput fallback: ${e.message}, raw=${response.content.take(300)}")
             null
         }
     }
 
-    private fun parseClarifierOutput(response: LlmResponse): ClarifierOutput? {
+    private fun parseClarifierOutput(response: LlmResponse, preferTools: Boolean): ClarifierOutput? {
+        if (preferTools) {
+            parseToolArguments(response, StructuredOutputTools.clarifier.name)?.let { toolArgs ->
+                return try {
+                    json.decodeFromString<ClarifierOutput>(toolArgs.toString())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decode clarifier tool args: ${e.message}, raw=${toolArgs.toString().take(300)}")
+                    null
+                }
+            }
+            Log.w(TAG, "Clarifier tool call missing, falling back to text response parsing")
+        }
+
         return try {
             json.decodeFromString<ClarifierOutput>(stripMarkdownCodeBlock(response.content))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse ClarifierOutput: ${response.content.take(200)}")
+            Log.e(TAG, "Failed to parse ClarifierOutput fallback: ${response.content.take(200)}")
             null
         }
     }
+
+    private fun parseToolArguments(response: LlmResponse, toolName: String) =
+        response.toolCalls.firstOrNull { it.name == toolName }?.arguments
 }

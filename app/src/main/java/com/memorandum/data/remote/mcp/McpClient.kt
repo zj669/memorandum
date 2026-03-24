@@ -1,6 +1,7 @@
 package com.memorandum.data.remote.mcp
 
 import com.memorandum.data.local.room.entity.McpServerEntity
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 interface McpClient {
@@ -8,9 +9,9 @@ interface McpClient {
     suspend fun callTool(
         server: McpServerEntity,
         toolName: String,
-        arguments: Map<String, Any>,
+        arguments: Map<String, JsonElement>,
     ): Result<McpToolResult>
-    suspend fun testConnection(server: McpServerEntity): Result<Boolean>
+    suspend fun testConnection(server: McpServerEntity): Result<List<McpTool>>
 }
 
 data class McpTool(

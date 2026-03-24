@@ -44,6 +44,13 @@ interface NotificationDao {
     )
     suspend fun getRecentByType(type: NotificationType, since: Long): List<NotificationEntity>
 
+    @Query(
+        """SELECT * FROM notifications
+        WHERE snoozed_until IS NOT NULL AND snoozed_until > :now
+        ORDER BY snoozed_until ASC""",
+    )
+    suspend fun getPendingSnoozed(now: Long): List<NotificationEntity>
+
     @Query("DELETE FROM notifications")
     suspend fun deleteAll()
 }

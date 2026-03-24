@@ -1,10 +1,12 @@
 package com.memorandum.ai.prompt
 
+import com.memorandum.ai.schema.StructuredOutputTools
 import com.memorandum.data.local.room.entity.HeartbeatLogEntity
 import com.memorandum.data.local.room.entity.MemoryEntity
 import com.memorandum.data.local.room.entity.NotificationEntity
 import com.memorandum.data.local.room.entity.TaskEntity
 import com.memorandum.data.remote.llm.LlmRequest
+import com.memorandum.data.remote.llm.LlmToolChoice
 import com.memorandum.data.remote.llm.ResponseFormat
 
 object HeartbeatPrompt {
@@ -39,7 +41,7 @@ object HeartbeatPrompt {
             appendLine()
             appendLine("如果你认为需要联网搜索补充信息，设置 should_use_mcp=true 并在 mcp_queries 中列出最多3条搜索查询。")
             appendLine()
-            appendLine("输出 JSON 格式：")
+            appendLine("请通过工具 submit_heartbeat_output 返回结构化结果；不要输出 JSON 文本。")
             appendLine("""
 {
   "should_use_mcp": false,
@@ -99,6 +101,8 @@ object HeartbeatPrompt {
             systemPrompt = systemPrompt,
             userMessage = userMessage,
             responseFormat = ResponseFormat.JSON,
+            tools = listOf(StructuredOutputTools.heartbeat),
+            toolChoice = LlmToolChoice.Specific(StructuredOutputTools.heartbeat.name),
         )
     }
 }

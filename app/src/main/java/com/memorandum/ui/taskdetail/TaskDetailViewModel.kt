@@ -116,10 +116,14 @@ class TaskDetailViewModel @Inject constructor(
     }
 
     fun onStatusChange(newStatus: TaskStatus) {
+        val previousStatus = _uiState.value.status
         _uiState.update { it.copy(status = newStatus, showStatusMenu = false) }
         viewModelScope.launch {
             taskRepository.updateStatus(taskId, newStatus)
-            recordTaskEventUseCase.record(taskId, "STATUS_CHANGE", newStatus.name)
+            recordTaskEventUseCase.record(taskId, "STATUS_CHANGE", "${previousStatus.name} -> ${newStatus.name}")
+            if (newStatus == TaskStatus.DONE) {
+                recordTaskEventUseCase.record(taskId, "DONE")
+            }
         }
     }
 
@@ -164,6 +168,7 @@ class TaskDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             scheduleBlockDao.accept(blockId)
+            recordTaskEventUseCase.record(taskId, "ACCEPTED_PLAN", blockId)
         }
     }
 

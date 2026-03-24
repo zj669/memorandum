@@ -31,7 +31,8 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val prefs = entryPoint.appPreferencesDataStore().preferences.first()
                 entryPoint.heartbeatScheduleManager().scheduleHeartbeat(prefs.heartbeatFrequency)
-                Log.i(TAG, "Heartbeat restored: frequency=${prefs.heartbeatFrequency}")
+                entryPoint.alarmScheduler().restoreFutureAlarms()
+                Log.i(TAG, "Heartbeat and alarms restored: frequency=${prefs.heartbeatFrequency}")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to restore heartbeat on boot: ${e.message}")
             } finally {

@@ -1,7 +1,7 @@
 [模型配置]
-baseurl = http://81.69.37.254:8084
-apikey = sk-ss9KlJFVpyTX6qJ1q4v0oU0tK4pt7lHA
-model = gpt-5.4
+baseurl = https://api.deepseek.com
+apikey = sk-74e1230698304bc2a5dbcc2107611b35
+model = deepseek-chat
 
 
 [联网搜索mcp]
@@ -9,8 +9,6 @@ exa ：    "exa": {
       "type": "http",
       "url": "https://mcp.exa.ai/mcp"
     }
-    
-    
+
+
 tavily： https://mcp.tavily.com/mcp/?tavilyApiKey=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
-
-

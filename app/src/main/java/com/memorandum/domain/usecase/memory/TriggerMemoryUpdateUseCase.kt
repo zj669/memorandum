@@ -24,7 +24,7 @@ class TriggerMemoryUpdateUseCase @Inject constructor(
 
         if (triggerEvent in immediateEvents) {
             Log.i(TAG, "Immediate trigger for event: $triggerEvent")
-            val result = memoryOrchestrator.updateMemories()
+            val result = memoryOrchestrator.updateMemories(force = true)
             if (result is MemoryUpdateResult.Updated) {
                 appPreferencesDataStore.updateLastMemoryUpdateAt(System.currentTimeMillis())
             }

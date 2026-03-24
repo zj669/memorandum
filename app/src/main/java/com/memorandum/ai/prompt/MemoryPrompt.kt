@@ -1,8 +1,10 @@
 package com.memorandum.ai.prompt
 
+import com.memorandum.ai.schema.StructuredOutputTools
 import com.memorandum.data.local.room.entity.MemoryEntity
 import com.memorandum.data.local.room.entity.TaskEventEntity
 import com.memorandum.data.remote.llm.LlmRequest
+import com.memorandum.data.remote.llm.LlmToolChoice
 import com.memorandum.data.remote.llm.ResponseFormat
 
 object MemoryPrompt {
@@ -30,8 +32,9 @@ object MemoryPrompt {
             appendLine("- source_refs 至少 1 个（引用事件 ID）")
             appendLine("- confidence 范围 0.0 ~ 1.0")
             appendLine("- type 可选值: PREFERENCE, PATTERN, LONG_TERM_GOAL, TASK_CONTEXT, PREP_TEMPLATE")
+            appendLine("- 优先通过工具 submit_memory_output 返回结构化结果，不要输出 JSON 文本")
             appendLine()
-            appendLine("输出 JSON 格式：")
+            appendLine("请通过工具 submit_memory_output 返回结构化结果；不要输出 JSON 文本。")
             appendLine("""
 {
   "new_memories": [
@@ -73,6 +76,8 @@ object MemoryPrompt {
             systemPrompt = systemPrompt,
             userMessage = userMessage,
             responseFormat = ResponseFormat.JSON,
+            tools = listOf(StructuredOutputTools.memory),
+            toolChoice = LlmToolChoice.Specific(StructuredOutputTools.memory.name),
         )
     }
 }

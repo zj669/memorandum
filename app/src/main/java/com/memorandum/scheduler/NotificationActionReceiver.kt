@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
+import com.memorandum.data.local.room.enums.NotificationActionType
+import com.memorandum.data.local.room.enums.NotificationType
 import com.memorandum.data.local.room.enums.TaskStatus
 import com.memorandum.di.ReceiverEntryPoint
 import dagger.hilt.android.EntryPointAccessors
@@ -22,18 +24,41 @@ class NotificationActionReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val notificationId = intent.getIntExtra("notification_id", -1)
-        val taskRef = intent.getStringExtra("task_ref")
+        val notificationId = intent.getIntExtra(NotificationHelper.EXTRA_NOTIFICATION_ID, -1)
+        val taskRef = intent.getStringExtra(NotificationHelper.EXTRA_TASK_REF)
+        val notificationDbId = intent.getStringExtra(NotificationHelper.EXTRA_NOTIFICATION_DB_ID)
+        val reminderId = intent.getStringExtra(NotificationHelper.EXTRA_REMINDER_ID)
+        val actionTypeName = intent.getStringExtra(NotificationHelper.EXTRA_ACTION_TYPE)
+        val notificationTypeName = intent.getStringExtra(NotificationHelper.EXTRA_NOTIFICATION_TYPE)
 
-        Log.i(TAG, "Action received: action=${intent.action}, notificationId=$notificationId, taskRef=$taskRef")
+        Log.i(
+            TAG,
+            "Action received: action=${intent.action}, notificationId=$notificationId, taskRef=$taskRef, dbId=$notificationDbId, reminderId=$reminderId",
+        )
 
         val entryPoint = EntryPointAccessors.fromApplication(
             context.applicationContext, ReceiverEntryPoint::class.java,
         )
 
         when (intent.action) {
-            ACTION_SNOOZE -> handleSnooze(context, notificationId, taskRef, entryPoint)
-            ACTION_MARK_DONE -> handleMarkDone(context, notificationId, taskRef, entryPoint)
+            ACTION_SNOOZE -> handleSnooze(
+                context = context,
+                notificationId = notificationId,
+                taskRef = taskRef,
+                notificationDbId = notificationDbId,
+                reminderId = reminderId,
+                actionTypeName = actionTypeName,
+                notificationTypeName = notificationTypeName,
+                entryPoint = entryPoint,
+            )
+            ACTION_MARK_DONE -> handleMarkDone(
+                context = context,
+                notificationId = notificationId,
+                taskRef = taskRef,
+                notificationDbId = notificationDbId,
+                reminderId = reminderId,
+                entryPoint = entryPoint,
+            )
         }
     }
 
@@ -41,6 +66,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
         context: Context,
         notificationId: Int,
         taskRef: String?,
+        notificationDbId: String?,
+        reminderId: String?,
+        actionTypeName: String?,
+        notificationTypeName: String?,
         entryPoint: ReceiverEntryPoint,
     ) {
         val pendingResult = goAsync()
@@ -50,18 +79,32 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
                 if (taskRef != null) {
                     val triggerAt = System.currentTimeMillis() + SNOOZE_DURATION_MS
+                    val requestKey = notificationDbId ?: reminderId ?: taskRef
+                    val actionType = actionTypeName
+                        ?.let { runCatching { NotificationActionType.valueOf(it) }.getOrNull() }
+                        ?: NotificationActionType.OPEN_TASK
+                    val notificationType = notificationTypeName
+                        ?.let { runCatching { NotificationType.valueOf(it) }.getOrNull() }
+                        ?: NotificationType.TIME_TO_START
                     entryPoint.alarmScheduler().scheduleTaskAlarm(
                         taskId = taskRef,
                         taskTitle = "",
                         triggerAtMillis = triggerAt,
-                        notificationTitle = "Snoozed Reminder",
-                        notificationBody = "You snoozed this task earlier",
+                        notificationTitle = "稍后提醒: 继续处理任务",
+                        notificationBody = "你之前选择了稍后提醒，回来继续推进吧。",
+                        requestCodeKey = requestKey,
+                        actionType = actionType,
+                        notificationType = notificationType,
+                        notificationDbId = notificationDbId,
                     )
 
-                    entryPoint.notificationRepository().markSnoozed(
-                        id = notificationId.toString(),
-                        until = triggerAt,
-                    )
+                    notificationDbId?.let {
+                        entryPoint.notificationRepository().markSnoozed(
+                            id = it,
+                            until = triggerAt,
+                        )
+                    }
+                    entryPoint.recordTaskEventUseCase().record(taskRef, "SNOOZE", triggerAt.toString())
                 }
 
                 Log.i(TAG, "Snooze handled: taskRef=$taskRef, snoozed for 1 hour")
@@ -77,16 +120,20 @@ class NotificationActionReceiver : BroadcastReceiver() {
         context: Context,
         notificationId: Int,
         taskRef: String?,
+        notificationDbId: String?,
+        reminderId: String?,
         entryPoint: ReceiverEntryPoint,
     ) {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 NotificationManagerCompat.from(context).cancel(notificationId)
+                notificationDbId?.let { entryPoint.notificationRepository().markClicked(it) }
 
                 if (taskRef != null) {
                     entryPoint.taskRepository().updateStatus(taskRef, TaskStatus.DONE)
-                    entryPoint.taskRepository().recordEvent(taskRef, "DONE", null)
+                    entryPoint.recordTaskEventUseCase().record(taskRef, "DONE")
+                    reminderId?.let { entryPoint.alarmScheduler().cancelTaskAlarm(it) }
                     entryPoint.alarmScheduler().cancelAllAlarmsForTask(taskRef)
                 }
 

@@ -11,6 +11,7 @@ import com.memorandum.data.remote.mcp.McpResultTrimmer
 import com.memorandum.data.remote.mcp.McpTool
 import com.memorandum.data.repository.ConfigRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -141,7 +142,7 @@ class McpOrchestrator @Inject constructor(
         val toolResult = mcpClient.callTool(
             server = server,
             toolName = selectedTool.name,
-            arguments = mapOf("query" to sanitizedQuery),
+            arguments = mapOf("query" to JsonPrimitive(sanitizedQuery)),
         ).getOrElse {
             Log.w(TAG, "Tool call failed: server=${server.name}, tool=${selectedTool.name}, error=${it.message}")
             return null

@@ -4,6 +4,7 @@ import android.util.Log
 import com.memorandum.ai.prompt.HeartbeatPrompt
 import com.memorandum.ai.schema.HeartbeatOutput
 import com.memorandum.ai.schema.SchemaValidator
+import com.memorandum.ai.schema.StructuredOutputTools
 import com.memorandum.data.local.datastore.AppPreferencesDataStore
 import com.memorandum.data.local.room.dao.HeartbeatLogDao
 import com.memorandum.data.local.room.dao.UserProfileDao
@@ -14,9 +15,12 @@ import com.memorandum.data.local.room.enums.NotificationType
 import com.memorandum.data.local.room.enums.TaskStatus
 import com.memorandum.data.remote.llm.LlmClient
 import com.memorandum.data.remote.llm.LlmResponse
+import com.memorandum.data.remote.llm.LlmToolChoice
 import com.memorandum.data.repository.MemoryRepository
 import com.memorandum.data.repository.NotificationRepository
 import com.memorandum.data.repository.TaskRepository
+import com.memorandum.scheduler.NotificationHelper
+import com.memorandum.scheduler.PermissionManager
 import com.memorandum.util.RetryHelper
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -41,6 +45,8 @@ class HeartbeatOrchestrator @Inject constructor(
     private val userProfileDao: UserProfileDao,
     private val heartbeatLogDao: HeartbeatLogDao,
     private val mcpOrchestrator: McpOrchestrator,
+    private val notificationHelper: NotificationHelper,
+    private val permissionManager: PermissionManager,
     private val schemaValidator: SchemaValidator,
     private val appPreferencesDataStore: AppPreferencesDataStore,
     private val retryHelper: RetryHelper,
@@ -84,8 +90,18 @@ class HeartbeatOrchestrator @Inject constructor(
             recentHeartbeats = recentHeartbeats,
         )
 
+        val supportsTools = llmClient.getCapabilities().getOrNull()?.supportsTools == true
+        if (!supportsTools) {
+            Log.w(TAG, "Heartbeat provider lacks tool support, falling back to text parsing")
+        }
+        val chatRequest = if (supportsTools) {
+            request
+        } else {
+            request.copy(tools = emptyList(), toolChoice = LlmToolChoice.None)
+        }
+
         val llmResult = retryHelper.retryWithBackoff(maxRetries = 2) {
-            llmClient.chat(request).getOrThrow()
+            llmClient.chat(chatRequest).getOrThrow()
         }
 
         val response = llmResult.getOrElse { e ->
@@ -94,9 +110,9 @@ class HeartbeatOrchestrator @Inject constructor(
             return HeartbeatResult.Failed("AI call failed: ${e.message}")
         }
 
-        val output = parseHeartbeatOutput(response)
+        val output = parseHeartbeatOutput(response, supportsTools)
         if (output == null) {
-            writeLog(shouldNotify = false, reason = "Parse failed", taskRef = null, usedMcp = false)
+            writeLog(shouldNotify = false, reason = "Parse failed after tool/text fallback", taskRef = null, usedMcp = false)
             return HeartbeatResult.Failed("Failed to parse AI response")
         }
 
@@ -114,11 +130,13 @@ class HeartbeatOrchestrator @Inject constructor(
                 // Re-run with MCP results injected into user message
                 val secondRequest = request.copy(
                     userMessage = request.userMessage + "\n\n联网搜索结果：\n$mcpSummary\n\n请基于以上信息做出最终决策，should_use_mcp 必须为 false。",
+                    tools = if (supportsTools) request.tools else emptyList(),
+                    toolChoice = if (supportsTools) request.toolChoice else LlmToolChoice.None,
                 )
                 val secondResult = retryHelper.retryWithBackoff(maxRetries = 1) {
                     llmClient.chat(secondRequest).getOrThrow()
                 }
-                secondResult.getOrNull()?.let { parseHeartbeatOutput(it) } ?: output
+                secondResult.getOrNull()?.let { parseHeartbeatOutput(it, supportsTools) } ?: output
             } else {
                 output
             }
@@ -189,6 +207,34 @@ class HeartbeatOrchestrator @Inject constructor(
         )
 
         notificationRepository.save(entity)
+
+        val delivered = notificationHelper.send(
+            systemNotificationKey = notificationId,
+            title = notif.title,
+            body = notif.body,
+            channelId = notificationHelper.channelForType(notificationType),
+            taskRef = taskRef,
+            actionType = actionType,
+            notificationType = notificationType,
+            notificationDbId = notificationId,
+        )
+        if (!delivered) {
+            val reason = if (permissionManager.hasNotificationPermission()) {
+                "Notification delivery failed"
+            } else {
+                "Notification permission missing"
+            }
+            Log.w(TAG, "Heartbeat notification not delivered: id=$notificationId, reason=$reason")
+            writeLog(
+                shouldNotify = false,
+                reason = reason,
+                taskRef = taskRef,
+                usedMcp = output.shouldUseMcp,
+                notificationType = notificationType,
+            )
+            appPreferencesDataStore.updateLastHeartbeat(now)
+            return HeartbeatResult.Skipped(reason)
+        }
 
         // Cooldown is tracked via the notification dedup window
         // No explicit cooldown update needed since isDuplicateNotification checks recent notifications
@@ -272,13 +318,38 @@ class HeartbeatOrchestrator @Inject constructor(
         }
     }
 
-    private fun parseHeartbeatOutput(response: LlmResponse): HeartbeatOutput? {
+    private fun parseHeartbeatOutput(response: LlmResponse, preferTools: Boolean): HeartbeatOutput? {
+        if (preferTools) {
+            response.toolCalls.firstOrNull { it.name == StructuredOutputTools.heartbeat.name }?.arguments?.let { toolArgs ->
+                return try {
+                    json.decodeFromString<HeartbeatOutput>(toolArgs.toString())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decode heartbeat tool args: ${e.message}, raw=${toolArgs.toString().take(300)}")
+                    null
+                }
+            }
+            Log.w(TAG, "Heartbeat tool call missing, falling back to text response parsing")
+        }
+
         return try {
-            json.decodeFromString<HeartbeatOutput>(response.content)
+            json.decodeFromString<HeartbeatOutput>(stripMarkdownCodeBlock(response.content))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse HeartbeatOutput: ${response.content.take(200)}")
+            Log.e(TAG, "Failed to parse HeartbeatOutput fallback: ${response.content.take(200)}")
             null
         }
+    }
+
+    private fun stripMarkdownCodeBlock(text: String): String {
+        val trimmed = text.trim()
+        val lines = trimmed.lines()
+        val firstCodeFence = lines.indexOfFirst { it.trim().startsWith("```") }
+        if (firstCodeFence >= 0) {
+            val lastCodeFence = lines.indexOfLast { it.trim() == "```" }
+            val start = firstCodeFence + 1
+            val end = if (lastCodeFence > firstCodeFence) lastCodeFence else lines.size
+            return lines.subList(start, end).joinToString("\n").trim()
+        }
+        return trimmed
     }
 
     private fun parseNotificationType(type: String): NotificationType? {

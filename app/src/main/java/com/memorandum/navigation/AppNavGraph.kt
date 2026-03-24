@@ -3,8 +3,10 @@ package com.memorandum.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import android.util.Log
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -21,11 +23,54 @@ import com.memorandum.ui.taskdetail.TaskDetailScreen
 import com.memorandum.ui.tasks.TasksScreen
 import com.memorandum.ui.today.TodayScreen
 
+data class NotificationNavigation(
+    val navigateTo: String,
+    val taskId: String? = null,
+    val nonce: Long,
+)
+
+private const val TAG = "AppNavGraph"
+
 @Composable
-fun AppNavGraph(modifier: Modifier = Modifier) {
+fun AppNavGraph(
+    pendingNavigation: NotificationNavigation? = null,
+    modifier: Modifier = Modifier,
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    LaunchedEffect(currentRoute) {
+        Log.i(TAG, "currentRoute=$currentRoute")
+    }
+
+    LaunchedEffect(pendingNavigation?.nonce) {
+        val target = pendingNavigation ?: return@LaunchedEffect
+        Log.i(TAG, "consumeNotificationNavigation: navigateTo=${target.navigateTo}, taskId=${target.taskId}, nonce=${target.nonce}")
+        when (target.navigateTo) {
+            "task" -> {
+                val taskId = target.taskId
+                if (taskId.isNullOrBlank()) {
+                    navController.navigate(Route.Today.route) {
+                        popUpTo(Route.Today.route) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                } else {
+                    navController.navigate(Route.TaskDetail.create(taskId)) {
+                        launchSingleTop = true
+                    }
+                }
+            }
+            else -> {
+                navController.navigate(Route.Today.route) {
+                    popUpTo(Route.Today.route) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
+    }
 
     val bottomTabRoutes = listOf(
         Route.Today.route,
@@ -57,7 +102,6 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
             startDestination = Route.Today.route,
             modifier = Modifier.padding(innerPadding),
         ) {
-            // Bottom tabs
             composable(Route.Today.route) {
                 TodayScreen(
                     onNavigateToEntry = { navController.navigate(Route.Entry.route) },
@@ -90,7 +134,6 @@ fun AppNavGraph(modifier: Modifier = Modifier) {
                 )
             }
 
-            // Secondary pages
             composable(Route.Entry.route) {
                 EntryScreen(
                     onNavigateBack = { navController.popBackStack() },

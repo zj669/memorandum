@@ -41,6 +41,14 @@ class PermissionManager @Inject constructor(
         }
     }
 
+    fun openNotificationSettings() {
+        openNotificationSettings(context)
+    }
+
+    fun openExactAlarmSettings() {
+        openExactAlarmSettings(context)
+    }
+
     fun openNotificationSettings(context: Context) {
         Log.i(TAG, "Opening notification settings")
         val intent = Intent().apply {

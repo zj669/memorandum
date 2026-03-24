@@ -4,6 +4,7 @@ import android.util.Log
 import com.memorandum.ai.prompt.MemoryPrompt
 import com.memorandum.ai.schema.MemoryOutput
 import com.memorandum.ai.schema.SchemaValidator
+import com.memorandum.ai.schema.StructuredOutputTools
 import com.memorandum.data.local.room.dao.TaskEventDao
 import com.memorandum.data.local.room.dao.UserProfileDao
 import com.memorandum.data.local.room.entity.MemoryEntity
@@ -11,6 +12,7 @@ import com.memorandum.data.local.room.entity.UserProfileEntity
 import com.memorandum.data.local.room.enums.MemoryType
 import com.memorandum.data.remote.llm.LlmClient
 import com.memorandum.data.remote.llm.LlmResponse
+import com.memorandum.data.remote.llm.LlmToolChoice
 import com.memorandum.data.repository.MemoryRepository
 import com.memorandum.util.RetryHelper
 import kotlinx.serialization.json.Json
@@ -40,11 +42,11 @@ class MemoryOrchestrator @Inject constructor(
         private const val MIN_EVENTS_FOR_TRIGGER = 5
     }
 
-    suspend fun updateMemories(): MemoryUpdateResult {
-        Log.i(TAG, "Memory update triggered")
+    suspend fun updateMemories(force: Boolean = false): MemoryUpdateResult {
+        Log.i(TAG, "Memory update triggered: force=$force")
 
         // 1. Check if we should trigger
-        if (!shouldTrigger()) {
+        if (!force && !shouldTrigger()) {
             Log.i(TAG, "Not enough events to trigger memory update")
             return MemoryUpdateResult.Skipped
         }
@@ -66,8 +68,18 @@ class MemoryOrchestrator @Inject constructor(
             userProfileJson = userProfile?.profileJson,
         )
 
+        val supportsTools = llmClient.getCapabilities().getOrNull()?.supportsTools == true
+        if (!supportsTools) {
+            Log.w(TAG, "Memory provider lacks tool support, falling back to text parsing")
+        }
+        val chatRequest = if (supportsTools) {
+            request
+        } else {
+            request.copy(tools = emptyList(), toolChoice = LlmToolChoice.None)
+        }
+
         val llmResult = retryHelper.retryWithBackoff(maxRetries = 1) {
-            llmClient.chat(request).getOrThrow()
+            llmClient.chat(chatRequest).getOrThrow()
         }
 
         val response = llmResult.getOrElse { e ->
@@ -75,8 +87,9 @@ class MemoryOrchestrator @Inject constructor(
             return MemoryUpdateResult.Failed("AI call failed: ${e.message}")
         }
 
-        val output = parseMemoryOutput(response)
+        val output = parseMemoryOutput(response, supportsTools)
         if (output == null) {
+            Log.e(TAG, "Memory output parsing failed across tool/text paths")
             return MemoryUpdateResult.Failed("Failed to parse AI response")
         }
 
@@ -194,13 +207,72 @@ class MemoryOrchestrator @Inject constructor(
         }
     }
 
-    private fun parseMemoryOutput(response: LlmResponse): MemoryOutput? {
+    private fun parseMemoryOutput(response: LlmResponse, preferTools: Boolean): MemoryOutput? {
+        if (preferTools) {
+            response.toolCalls.firstOrNull { it.name == StructuredOutputTools.memory.name }?.arguments?.let { toolArgs ->
+                return try {
+                    json.decodeFromString<MemoryOutput>(toolArgs.toString())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decode memory tool args: ${e.message}, raw=${toolArgs.toString().take(300)}")
+                    null
+                }
+            }
+            Log.w(TAG, "Memory tool call missing, falling back to text response parsing")
+        }
+
+        val cleaned = extractJsonObject(response.content)
         return try {
-            json.decodeFromString<MemoryOutput>(response.content)
+            json.decodeFromString<MemoryOutput>(cleaned)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse MemoryOutput: ${response.content.take(200)}")
+            Log.e(
+                TAG,
+                "Failed to parse MemoryOutput fallback: error=${e.message}, raw=${response.content.take(300)}, cleaned=${cleaned.take(300)}",
+            )
             null
         }
+    }
+
+    private fun extractJsonObject(text: String): String {
+        val stripped = stripMarkdownCodeBlock(text)
+        val start = stripped.indexOfFirst { it == '{' }
+        if (start < 0) return stripped.trim()
+
+        var depth = 0
+        var inString = false
+        var escaping = false
+        for (index in start until stripped.length) {
+            val char = stripped[index]
+            if (escaping) {
+                escaping = false
+                continue
+            }
+            when (char) {
+                '\\' -> if (inString) escaping = true
+                '"' -> inString = !inString
+                '{' -> if (!inString) depth++
+                '}' -> if (!inString) {
+                    depth--
+                    if (depth == 0) {
+                        return stripped.substring(start, index + 1).trim()
+                    }
+                }
+            }
+        }
+
+        return stripped.substring(start).trim()
+    }
+
+    private fun stripMarkdownCodeBlock(text: String): String {
+        val trimmed = text.trim()
+        val lines = trimmed.lines()
+        val firstCodeFence = lines.indexOfFirst { it.trim().startsWith("```") }
+        if (firstCodeFence >= 0) {
+            val lastCodeFence = lines.indexOfLast { it.trim() == "```" }
+            val start = firstCodeFence + 1
+            val end = if (lastCodeFence > firstCodeFence) lastCodeFence else lines.size
+            return lines.subList(start, end).joinToString("\n").trim()
+        }
+        return trimmed
     }
 
     private fun parseMemoryType(type: String): MemoryType? {

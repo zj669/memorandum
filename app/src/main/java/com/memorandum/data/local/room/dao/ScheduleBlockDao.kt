@@ -16,8 +16,18 @@ interface ScheduleBlockDao {
     @Query("SELECT * FROM schedule_blocks WHERE task_id = :taskId ORDER BY block_date, start_time")
     fun observeByTask(taskId: String): Flow<List<ScheduleBlockEntity>>
 
+    @Query("SELECT * FROM schedule_blocks WHERE task_id = :taskId ORDER BY block_date, start_time")
+    suspend fun getByTask(taskId: String): List<ScheduleBlockEntity>
+
     @Query("SELECT * FROM schedule_blocks WHERE block_date = :date ORDER BY start_time")
     fun observeByDate(date: String): Flow<List<ScheduleBlockEntity>>
+
+    @Query(
+        """SELECT * FROM schedule_blocks
+        WHERE block_date > :today OR (block_date = :today AND start_time >= :nowTime)
+        ORDER BY block_date, start_time""",
+    )
+    suspend fun getFutureBlocks(today: String, nowTime: String): List<ScheduleBlockEntity>
 
     @Query("DELETE FROM schedule_blocks WHERE task_id = :taskId AND source = 'PLANNER'")
     suspend fun deletePlannerBlocksForTask(taskId: String)

@@ -1,5 +1,6 @@
 package com.memorandum.ui.settings
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.memorandum.data.local.datastore.AppPreferencesDataStore
@@ -7,6 +8,7 @@ import com.memorandum.data.local.room.enums.HeartbeatFrequency
 import com.memorandum.data.repository.ConfigRepository
 import com.memorandum.domain.usecase.config.ClearDataUseCase
 import com.memorandum.scheduler.HeartbeatScheduleManager
+import com.memorandum.scheduler.PermissionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,7 @@ class SettingsViewModel @Inject constructor(
     private val appPreferencesDataStore: AppPreferencesDataStore,
     private val heartbeatScheduleManager: HeartbeatScheduleManager,
     private val clearDataUseCase: ClearDataUseCase,
+    private val permissionManager: PermissionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -60,6 +63,9 @@ class SettingsViewModel @Inject constructor(
                     quietHoursStart = prefs.quietHoursStart,
                     quietHoursEnd = prefs.quietHoursEnd,
                     allowNetworkAccess = prefs.allowNetworkAccess,
+                    notificationPermissionGranted = permissionManager.hasNotificationPermission(),
+                    exactAlarmPermissionGranted = permissionManager.hasExactAlarmPermission(),
+                    shouldShowRuntimeNotificationRequest = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
                 )
             }.catch { e ->
                 _uiState.update { it.copy(error = e.message) }
@@ -122,6 +128,32 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun refreshPermissions() {
+        _uiState.update {
+            it.copy(
+                notificationPermissionGranted = permissionManager.hasNotificationPermission(),
+                exactAlarmPermissionGranted = permissionManager.hasExactAlarmPermission(),
+            )
+        }
+    }
+
+    fun onNotificationPermissionResult(granted: Boolean) {
+        _uiState.update { it.copy(notificationPermissionGranted = granted) }
+        if (!granted) {
+            openNotificationSettings()
+        }
+    }
+
+    fun openNotificationSettings() {
+        permissionManager.openNotificationSettings()
+        refreshPermissions()
+    }
+
+    fun openExactAlarmSettings() {
+        permissionManager.openExactAlarmSettings()
+        refreshPermissions()
+    }
+
     // Dialog visibility
     fun onShowClearMemoryDialog() {
         _uiState.update { it.copy(showClearMemoryDialog = true) }
@@ -182,6 +214,9 @@ data class SettingsUiState(
     val quietHoursStart: String = "23:00",
     val quietHoursEnd: String = "07:00",
     val allowNetworkAccess: Boolean = false,
+    val notificationPermissionGranted: Boolean = false,
+    val exactAlarmPermissionGranted: Boolean = false,
+    val shouldShowRuntimeNotificationRequest: Boolean = false,
     val showClearMemoryDialog: Boolean = false,
     val showClearNotificationsDialog: Boolean = false,
     val showClearAllDialog: Boolean = false,
