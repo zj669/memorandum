@@ -174,9 +174,11 @@ private fun NotificationCard(
                         NotificationStatus.CLICKED -> "已读"
                         NotificationStatus.DISMISSED -> "已忽略"
                         NotificationStatus.SNOOZED -> "已延后"
+                        NotificationStatus.DELIVERY_FAILED -> "发送失败"
                     }
                     val statusColor = when (notification.status) {
                         NotificationStatus.UNREAD -> MaterialTheme.colorScheme.primary
+                        NotificationStatus.DELIVERY_FAILED -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.outline
                     }
                     Text(

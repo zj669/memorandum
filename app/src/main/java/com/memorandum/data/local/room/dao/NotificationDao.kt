@@ -34,6 +34,9 @@ interface NotificationDao {
     @Query("UPDATE notifications SET snoozed_until = :until WHERE id = :id")
     suspend fun markSnoozed(id: String, until: Long)
 
+    @Query("UPDATE notifications SET delivery_failed_at = :now WHERE id = :id")
+    suspend fun markDeliveryFailed(id: String, now: Long)
+
     @Query("SELECT * FROM notifications WHERE created_at >= :since ORDER BY created_at DESC")
     suspend fun getNotificationsSince(since: Long): List<NotificationEntity>
 

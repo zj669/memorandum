@@ -44,22 +44,29 @@ class AlarmReceiver : BroadcastReceiver() {
                     NotificationActionType.OPEN_TASK
                 }
 
-                entryPoint.notificationRepository().save(
-                    NotificationEntity(
-                        id = notificationRecordId,
-                        type = NotificationType.TIME_TO_START,
-                        actionType = parsedActionType,
-                        title = title,
-                        body = body,
-                        taskRef = taskId,
-                        createdAt = System.currentTimeMillis(),
-                        clickedAt = null,
-                        dismissedAt = null,
-                        snoozedUntil = null,
-                    ),
+                val notification = NotificationEntity(
+                    id = notificationRecordId,
+                    type = NotificationType.TIME_TO_START,
+                    actionType = parsedActionType,
+                    title = title,
+                    body = body,
+                    taskRef = taskId,
+                    createdAt = System.currentTimeMillis(),
+                    clickedAt = null,
+                    dismissedAt = null,
+                    snoozedUntil = null,
+                    deliveryFailedAt = null,
                 )
 
-                entryPoint.notificationHelper().send(
+                entryPoint.notificationRepository().save(notification).getOrElse { error ->
+                    Log.e(
+                        TAG,
+                        "Failed to save time-to-start notification: alarmKey=$alarmKey, taskId=$taskId, error=${error.message}",
+                    )
+                    return@launch
+                }
+
+                val delivered = entryPoint.notificationHelper().send(
                     id = notificationRecordId.hashCode(),
                     notificationRecordId = notificationRecordId,
                     title = title,
@@ -68,6 +75,18 @@ class AlarmReceiver : BroadcastReceiver() {
                     taskRef = taskId,
                     actionType = parsedActionType,
                 )
+                if (!delivered) {
+                    entryPoint.notificationRepository().markDeliveryFailed(notificationRecordId).getOrElse { error ->
+                        Log.e(
+                            TAG,
+                            "Failed to persist time-to-start delivery failure: notificationId=$notificationRecordId, error=${error.message}",
+                        )
+                    }
+                    Log.w(
+                        TAG,
+                        "Time-to-start notification delivery failed: alarmKey=$alarmKey, taskId=$taskId, notificationId=$notificationRecordId",
+                    )
+                }
             } finally {
                 pendingResult.finish()
             }

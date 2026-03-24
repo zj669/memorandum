@@ -39,4 +39,8 @@ class NotificationRepositoryImpl @Inject constructor(
     override suspend fun markSnoozed(id: String, until: Long): Result<Unit> = runCatching {
         notificationDao.markSnoozed(id, until)
     }
+
+    override suspend fun markDeliveryFailed(id: String): Result<Unit> = runCatching {
+        notificationDao.markDeliveryFailed(id, System.currentTimeMillis())
+    }
 }

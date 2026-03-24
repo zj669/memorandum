@@ -45,7 +45,7 @@ import com.memorandum.data.local.room.entity.UserProfileEntity
         LlmConfigEntity::class,
         McpServerEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -55,6 +55,14 @@ abstract class MemorandumDatabase : RoomDatabase() {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("UPDATE entries SET planning_state = 'PLANNING' WHERE planning_state = 'GENERATING'")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE notifications ADD COLUMN delivery_failed_at INTEGER",
+                )
             }
         }
     }

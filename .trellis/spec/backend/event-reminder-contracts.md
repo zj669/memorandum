@@ -83,8 +83,13 @@ entryPoint.recordTaskEventUseCase().record(taskRef, "DONE", notificationRecordId
 ### 2. Signatures
 - `app/src/main/java/com/memorandum/ai/orchestrator/HeartbeatOrchestrator.kt`
   - `suspend fun executeHeartbeat(): HeartbeatResult`
+- `app/src/main/java/com/memorandum/scheduler/CooldownManager.kt`
+  - `suspend fun isInCooldown(taskId: String): Boolean`
+  - `suspend fun setCooldown(taskId: String, hours: Int)`
 - `app/src/main/java/com/memorandum/scheduler/NotificationHelper.kt`
   - `fun send(id: Int, notificationRecordId: String, title: String, body: String, channelId: String, taskRef: String?, actionType: NotificationActionType): Boolean`
+- `app/src/main/java/com/memorandum/data/repository/NotificationRepository.kt`
+  - `suspend fun markDeliveryFailed(id: String): Result<Unit>`
 - `app/src/main/java/com/memorandum/scheduler/AlarmScheduler.kt`
   - `fun scheduleTaskAlarm(alarmKey: String, taskId: String, taskTitle: String, triggerAtMillis: Long, notificationTitle: String, notificationBody: String)`
   - `fun cancelTaskAlarm(alarmKey: String)`
@@ -92,15 +97,26 @@ entryPoint.recordTaskEventUseCase().record(taskRef, "DONE", notificationRecordId
   - restores heartbeat work + future schedule alarms + snoozed reminder alarms after `Intent.ACTION_BOOT_COMPLETED`
 - `app/src/main/java/com/memorandum/MainActivity.kt`
   - consumes `navigate_to` and `task_id` extras into `NavigationRequest`
+- Persisted fields participating in the contract:
+  - `tasks.notification_cooldown_until`
+  - `notifications.delivery_failed_at`
+- UI surfacing:
+  - `app/src/main/java/com/memorandum/ui/notifications/NotificationsViewModel.kt`
+  - `app/src/main/java/com/memorandum/ui/notifications/NotificationsScreen.kt`
 
 ### 3. Contracts
 - Delivery contract:
   - If heartbeat AI returns `should_notify=true` and dedup/quiet-hours checks pass, `HeartbeatOrchestrator` must both:
     1. save `NotificationEntity`
     2. call `NotificationHelper.send(...)`
+- Cooldown contract:
+  - Heartbeat cooldown is persisted on `tasks.notification_cooldown_until`, not held in memory only.
+  - `HeartbeatOrchestrator` must check `CooldownManager.isInCooldown(taskRef)` before dedup/send.
+  - `CooldownManager.setCooldown(taskRef, finalOutput.cooldownHours)` runs only after successful notification delivery.
 - Permission degradation contract:
   - `NotificationHelper.send(...)` returns `false` when POST_NOTIFICATIONS is missing or app notifications are disabled.
   - Caller must log/store a visible failure reason instead of silently reporting success.
+  - Failed deliveries must persist `notifications.delivery_failed_at` so the Notifications screen can render `DELIVERY_FAILED` / `发送失败`.
 - PendingIntent extras contract:
   - notification click/action intents must preserve:
     - `notification_id: Int`
@@ -120,7 +136,10 @@ entryPoint.recordTaskEventUseCase().record(taskRef, "DONE", notificationRecordId
 
 ### 4. Validation & Error Matrix
 - `should_notify=true` but helper not called -> invalid, because DB row exists without user-visible notification.
+- Heartbeat cooldown stored only in process memory -> invalid, because app restart/next worker run loses suppression state.
+- Cooldown written before successful send -> invalid, because permission failures would suppress later retries even though nothing reached the user.
 - Helper returns `false` because notifications disabled -> caller records/logs permission failure and returns failed/skipped state, not silent success.
+- Delivery failure only logged, not persisted -> invalid, because UI cannot surface the failed-notification state.
 - Boot restore only reschedules heartbeat work -> invalid, because future block alarms and snoozed reminders are lost after reboot.
 - Notification click missing `navigate_to`/`task_id` consumption in activity/nav -> invalid, because tapping notification has no landing destination.
 - Reusing task id as every alarm key -> invalid, because multiple schedule blocks collide and later cancellation/restoration becomes incorrect.

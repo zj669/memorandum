@@ -25,4 +25,5 @@ data class NotificationEntity(
     @ColumnInfo(name = "clicked_at") val clickedAt: Long?,
     @ColumnInfo(name = "dismissed_at") val dismissedAt: Long?,
     @ColumnInfo(name = "snoozed_until") val snoozedUntil: Long?,
+    @ColumnInfo(name = "delivery_failed_at") val deliveryFailedAt: Long?,
 )

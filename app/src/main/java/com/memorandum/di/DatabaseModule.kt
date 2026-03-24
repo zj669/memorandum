@@ -44,7 +44,7 @@ object DatabaseModule {
             context,
             MemorandumDatabase::class.java,
             "memorandum.db",
-        ).addMigrations(MemorandumDatabase.MIGRATION_1_2).build()
+        ).addMigrations(MemorandumDatabase.MIGRATION_1_2, MemorandumDatabase.MIGRATION_2_3).build()
 
     @Provides fun provideEntryDao(db: MemorandumDatabase): EntryDao = db.entryDao()
     @Provides fun provideTaskDao(db: MemorandumDatabase): TaskDao = db.taskDao()

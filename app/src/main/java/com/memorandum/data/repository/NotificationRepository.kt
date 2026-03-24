@@ -11,4 +11,5 @@ interface NotificationRepository {
     suspend fun markClicked(id: String): Result<Unit>
     suspend fun markDismissed(id: String): Result<Unit>
     suspend fun markSnoozed(id: String, until: Long): Result<Unit>
+    suspend fun markDeliveryFailed(id: String): Result<Unit>
 }

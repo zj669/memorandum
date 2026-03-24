@@ -37,6 +37,7 @@ class NotificationsViewModel @Inject constructor(
                             isLoading = false,
                             notifications = notifications.map { notif ->
                                 val status = when {
+                                    notif.deliveryFailedAt != null -> NotificationStatus.DELIVERY_FAILED
                                     notif.snoozedUntil != null -> NotificationStatus.SNOOZED
                                     notif.dismissedAt != null -> NotificationStatus.DISMISSED
                                     notif.clickedAt != null -> NotificationStatus.CLICKED
@@ -82,4 +83,4 @@ data class NotificationDisplayItem(
     val status: NotificationStatus,
 )
 
-enum class NotificationStatus { UNREAD, CLICKED, DISMISSED, SNOOZED }
+enum class NotificationStatus { UNREAD, CLICKED, DISMISSED, SNOOZED, DELIVERY_FAILED }

@@ -16,6 +16,7 @@ import com.memorandum.data.remote.llm.LlmResponse
 import com.memorandum.data.repository.MemoryRepository
 import com.memorandum.data.repository.NotificationRepository
 import com.memorandum.data.repository.TaskRepository
+import com.memorandum.scheduler.CooldownManager
 import com.memorandum.scheduler.NotificationHelper
 import com.memorandum.util.RetryHelper
 import kotlinx.coroutines.flow.first
@@ -43,6 +44,7 @@ class HeartbeatOrchestrator @Inject constructor(
     private val mcpOrchestrator: McpOrchestrator,
     private val schemaValidator: SchemaValidator,
     private val appPreferencesDataStore: AppPreferencesDataStore,
+    private val cooldownManager: CooldownManager,
     private val notificationHelper: NotificationHelper,
     private val retryHelper: RetryHelper,
     private val json: Json,
@@ -149,6 +151,17 @@ class HeartbeatOrchestrator @Inject constructor(
 
         val taskRef = finalOutput.taskRef
         if (taskRef != null) {
+            if (cooldownManager.isInCooldown(taskRef)) {
+                Log.i(TAG, "Task $taskRef in cooldown window, skipping heartbeat notification")
+                writeLog(
+                    shouldNotify = false,
+                    reason = "Task in cooldown",
+                    taskRef = taskRef,
+                    usedMcp = output.shouldUseMcp,
+                )
+                return HeartbeatResult.Skipped("Task in cooldown")
+            }
+
             if (isDuplicateNotification(taskRef, NotificationType.HEARTBEAT_CHECK)) {
                 Log.i(TAG, "Task $taskRef in cooldown/dedup window, skipping notification")
                 writeLog(shouldNotify = false, reason = "Duplicate notification", taskRef = taskRef, usedMcp = false)
@@ -179,6 +192,7 @@ class HeartbeatOrchestrator @Inject constructor(
             clickedAt = null,
             dismissedAt = null,
             snoozedUntil = null,
+            deliveryFailedAt = null,
         )
 
         notificationRepository.save(entity).getOrElse { error ->
@@ -196,6 +210,16 @@ class HeartbeatOrchestrator @Inject constructor(
             actionType = actionType,
         )
         if (!delivered) {
+            notificationRepository.markDeliveryFailed(notificationId).getOrElse { error ->
+                Log.e(
+                    TAG,
+                    "Failed to persist heartbeat delivery failure: notificationId=$notificationId, error=${error.message}",
+                )
+            }
+            Log.w(
+                TAG,
+                "Heartbeat notification delivery failed: notificationId=$notificationId, taskRef=$taskRef, type=$notificationType",
+            )
             writeLog(
                 shouldNotify = false,
                 reason = "Notification permission missing or notifications disabled",
@@ -204,6 +228,10 @@ class HeartbeatOrchestrator @Inject constructor(
                 notificationType = notificationType,
             )
             return HeartbeatResult.Failed("Notification permission missing or notifications disabled")
+        }
+
+        if (taskRef != null) {
+            cooldownManager.setCooldown(taskRef, finalOutput.cooldownHours)
         }
 
         writeLog(
