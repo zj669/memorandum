@@ -19,6 +19,7 @@ This project is an Android local-first app with no backend server. "Backend" ref
 | [Error Handling](./error-handling.md) | Result pattern, retry, degradation strategy | Done |
 | [Quality Guidelines](./quality-guidelines.md) | Forbidden patterns, testing, code review | Done |
 | [Logging Guidelines](./logging-guidelines.md) | Log levels, what to log, sensitive data | Done |
+| [Event & Reminder Contracts](./event-reminder-contracts.md) | Memory event triggers, notification delivery, alarm recovery | Done |
 
 ---
 

@@ -87,8 +87,4 @@ class AlarmScheduler @Inject constructor(
             pendingIntent.cancel()
         }
     }
-
-    fun cancelAllAlarmsForTask(taskId: String) {
-        cancelTaskAlarm(taskId)
-    }
 }
